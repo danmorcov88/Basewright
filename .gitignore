@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Ansible
+*.retry
+ansible/collections/
+ansible/inventory/*.local
+
+# Molecule
+.molecule/
+
+# Local working notes and tool configuration, not part of the repository
+tasks/
+project brief.md
+CLAUDE.md
+
+# Runtime artifacts
+plans/
+*.plan.json
+*.verify.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

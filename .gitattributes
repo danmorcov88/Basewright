@@ -1,0 +1,8 @@
+# Line endings are LF everywhere in the tree, on every platform. Configuration files,
+# rendered plans and golden fixtures are compared byte for byte; a checkout that
+# rewrote them would fail those comparisons for a reason nobody enjoys diagnosing.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gz  binary

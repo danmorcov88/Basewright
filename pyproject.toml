@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "basewright"
+version = "0.1.0"
+description = "Automated provisioning of database instances on servers that already exist"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Dan Morcov", email = "danmorcov88@gmail.com" }]
+keywords = ["ansible", "database", "provisioning", "postgresql", "preflight", "sizing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: System :: Installation/Setup",
+    "Typing :: Typed",
+]
+dependencies = [
+    "jinja2>=3.1",
+    "jsonschema>=4.21",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "types-jsonschema",
+    "types-pyyaml",
+    "yamllint>=1.35",
+]
+
+[project.scripts]
+basewright = "basewright.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/danmorcov88/Basewright"
+Issues = "https://github.com/danmorcov88/Basewright/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["basewright"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["basewright", "test", "tools"]
+
+[tool.ruff.lint]
+select = ["A", "B", "C4", "E", "F", "I", "N", "PTH", "RUF", "SIM", "UP", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["basewright"]
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["basewright", "tools"]
+strict = true
+warn_unreachable = true
+pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "--strict-markers --strict-config"
+markers = [
+    "golden: compares rendered output against a committed fixture",
+]
+
+[tool.coverage.run]
+source = ["basewright"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
