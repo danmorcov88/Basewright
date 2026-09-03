@@ -285,9 +285,39 @@ architecture the prose uses; terminal images are captured by running the command
 can drift, because CI regenerates both and compares them byte for byte with what is
 committed — a stale picture fails the build the way a stale test does.
 
-Architecture decisions are recorded in [docs/adr/](docs/adr/), including why the plan is a
-durable artifact, why there are only two gate severities, why Semaphore is the interface,
-and why backups are somebody else's job.
+## Architecture decisions
+
+Thirteen decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+it, what it costs, and the alternatives that were rejected. The four that shape everything
+else:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
+  <img alt="The thirteen decision records, grouped by the question each one answers"
+       src="docs/assets/decisions-light.svg" width="980">
+</picture>
+
+- [ADR-0001](docs/adr/0001-plan-before-apply.md) — the plan comes before the change, and it
+  is a file somebody can review.
+- [ADR-0002](docs/adr/0002-engines-are-data.md) — engines are data, so adding one never
+  edits the core.
+- [ADR-0004](docs/adr/0004-two-severities-no-override.md) — two severities, and no way to
+  override a block at run time. The most arguable of them, and the record makes the case
+  against itself.
+- [ADR-0008](docs/adr/0008-python-decides-ansible-acts.md) — Python decides, Ansible acts,
+  and the plan is the boundary.
+
+The rest cover how a version is chosen
+([0003](docs/adr/0003-humans-choose-the-version.md)), why the interface is Semaphore
+([0005](docs/adr/0005-semaphore-is-the-interface.md)), how targets are reached
+([0006](docs/adr/0006-dedicated-technical-account.md)) and how credentials are kept out of
+every artifact ([0007](docs/adr/0007-secrets-never-in-artifacts.md)), why every sizing rule
+carries its own justification ([0009](docs/adr/0009-sizing-rules-explain-themselves.md)),
+what a second run is allowed to do ([0010](docs/adr/0010-idempotency-match-or-refuse.md)),
+where packages come from ([0011](docs/adr/0011-native-packages-from-vendors.md)), and the two
+boundaries that keep the scope finishable —
+[0012](docs/adr/0012-starts-at-a-reachable-host.md) and
+[0013](docs/adr/0013-backups-are-out-of-scope.md).
 
 ## Project status
 
