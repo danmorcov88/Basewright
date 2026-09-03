@@ -1,0 +1,9 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/danmorcov88/Basewright/security/advisories/new
+    about: Report a vulnerability privately, not as a public issue.
+  - name: Question or proposal
+    url: https://github.com/danmorcov88/Basewright/discussions
+    about: Scope questions and design proposals belong in a discussion first.
