@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/packages.schema.json",
+  "title": "Packages and repositories",
+  "description": "What to install, from where, and which service unit results, for each operating system family the profile supports. Native packages from vendor repositories only: nothing here describes a source build or a tarball unpacked into /opt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "families"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "families": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]{1,15}$" },
+      "additionalProperties": { "$ref": "#/$defs/family" },
+      "description": "Keyed by operating system family. Every family declared in profile.yml needs an entry here, which the loader checks: a profile that claims a family it cannot install on is worse than one that does not claim it."
+    }
+  },
+  "$defs": {
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packages", "service"],
+      "properties": {
+        "repository": { "$ref": "#/$defs/repository" },
+        "packages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A package name, which may reference the version placeholder."
+          }
+        },
+        "service": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The service unit that results, which may reference the version and instance placeholders."
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "Plain HTTP is not offered. A package repository reached without transport security is a supply chain nobody controls."
+        },
+        "key_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "Where the signing key comes from."
+        },
+        "suite": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The distribution or release the repository is keyed by, where the family uses one."
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "gpg_check": {
+          "type": "boolean",
+          "description": "Absent means true. Setting it to false is a decision that has to survive a code review."
+        }
+      }
+    }
+  }
+}

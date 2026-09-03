@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/profile.schema.json",
+  "title": "Profile identity",
+  "description": "Identity, supported operating system families and defaults for one database engine. The rest of the profile is read in terms of what this file declares, so it is the file the loader reads first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "display_name", "profile_version", "summary", "os_families", "defaults"],
+  "properties": {
+    "engine": {
+      "$ref": "#/$defs/engine",
+      "description": "The slug of the engine. It names the profile directory and every other file in the profile repeats it, so a file cannot be copied into the wrong profile unnoticed."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "The name as a human writes it. Used in reports; never used to decide anything."
+    },
+    "profile_version": {
+      "type": "string",
+      "pattern": "^[0-9]+[.][0-9]+[.][0-9]+$",
+      "description": "Version of the profile itself, not of the engine. Carried into plan.json so a plan can be traced back to the tuning decisions that produced it."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "One sentence describing what this profile provisions."
+    },
+    "os_families": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/os_family" },
+      "description": "Every operating system family this profile can provision. The single source of truth: a family used in the support matrix, the layout or the package definitions but missing here is a loader error."
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "instance"],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "The port an instance listens on when the request does not override it."
+        },
+        "instance": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,30}$",
+          "description": "The instance name used when the request does not supply one."
+        }
+      }
+    },
+    "documentation": {
+      "type": "string",
+      "pattern": "^https://",
+      "description": "Upstream documentation for the engine, for a reader of the plan who wants the primary source."
+    }
+  },
+  "$defs": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "os_family": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,15}$"
+    }
+  }
+}

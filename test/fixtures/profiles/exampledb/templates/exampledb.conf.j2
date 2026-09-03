@@ -1,0 +1,5 @@
+# Managed by Basewright. Generated from plan {{ plan_id }} on {{ generated_at }}.
+# Every value below carries the rule that produced it; edit the profile, not this file.
+{% for parameter in parameters %}
+{{ parameter.parameter }} = {{ parameter.value }}  # {{ parameter.rule }}
+{% endfor %}

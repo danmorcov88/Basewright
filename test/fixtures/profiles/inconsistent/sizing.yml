@@ -1,0 +1,13 @@
+---
+engine: inconsistent
+rules:
+  - id: inconsistent.cache_size
+    parameter: cache_size
+    expr: 0.25 * host.memory.total_bytes
+    unit: bytes
+    why: A quarter of memory is the standard starting point for a shared cache.
+  - id: inconsistent.cache_size
+    parameter: cache_size_max
+    expr: 0.50 * host.memory.total_bytes
+    unit: bytes
+    why: A second rule, sharing an identifier with the first one above it.

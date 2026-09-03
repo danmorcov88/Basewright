@@ -1,0 +1,8 @@
+---
+engine: malformed
+rules:
+  - id: malformed.cache_size
+    parameter: cache_size
+    expr: 0.25 * host.memory.total_bytes
+    unit: bytes
+    max: 8GB

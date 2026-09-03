@@ -1,0 +1,44 @@
+---
+engine: exampledb
+rules:
+  - id: exampledb.cache_size
+    parameter: cache_size
+    expr: 0.25 * host.memory.total_bytes
+    unit: bytes
+    min: 128MB
+    max: 8GB
+    round_to: 128MB
+    why: >-
+      A quarter of memory is the standard starting point for a shared cache, and it is
+      capped because past that point the operating system page cache is the better place
+      for the memory: it can be reclaimed under pressure, and this cannot.
+  - id: exampledb.max_connections
+    parameter: max_connections
+    expr: "200"
+    unit: count
+    warn_above: 400
+    why: >-
+      A fixed, conservative default. Above four hundred the answer is a connection pooler
+      rather than a larger number here, because the memory cost is paid per backend.
+  - id: exampledb.work_memory
+    parameter: work_memory
+    expr: (0.25 * host.memory.total_bytes) / (max_connections * 2)
+    unit: bytes
+    min: 4MB
+    why: >-
+      This is charged per sort or hash node, not per connection, and a single query can
+      hold several at once. The division by two is the allowance for that.
+  - id: exampledb.random_page_cost
+    parameter: random_page_cost
+    expr: 1.1 if not path.data.rotational else 4.0
+    unit: ratio
+    why: >-
+      On solid state storage a random read costs very nearly what a sequential one does,
+      and a planner told otherwise will avoid indexes it should be using.
+  - id: exampledb.checkpoint_interval
+    parameter: checkpoint_interval
+    expr: "300"
+    unit: seconds
+    why: >-
+      Longer intervals mean less write amplification and a longer recovery after a crash.
+      Five minutes is the point where most workloads stop noticing either.

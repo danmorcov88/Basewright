@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/layout.schema.json",
+  "title": "Filesystem layout",
+  "description": "Where an instance keeps its files, with what permissions, and which account owns them. Every default here is overridable per host; the defaults exist so that a request with no overrides still produces a complete, defensible plan.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "paths", "service_account"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "paths": {
+      "type": "object",
+      "description": "Every kind of file an instance writes, keyed by what the file is for. A data path and a log path are the minimum any engine has: an instance whose logs go nowhere is one nobody can operate afterwards.",
+      "minProperties": 1,
+      "required": ["data", "log"],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,15}$",
+        "description": "The purpose of the path, as the plan labels it. Which purposes exist is the engine's business, not the core's."
+      },
+      "additionalProperties": { "$ref": "#/$defs/path" }
+    },
+    "service_account": { "$ref": "#/$defs/service_account" }
+  },
+  "$defs": {
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "mode"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An absolute path, which may reference the engine and instance placeholders."
+        },
+        "mode": {
+          "type": "string",
+          "pattern": "^0[0-7]{3}$",
+          "description": "Directory permissions, quoted so that 0700 survives YAML parsing intact."
+        },
+        "min_free": {
+          "$ref": "#/$defs/size",
+          "description": "Free space the mount carrying this path must have. This is a block threshold, so it has to be a number someone will defend in a review."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "service_account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "create_if_missing", "shell"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$"
+        },
+        "create_if_missing": {
+          "type": "boolean",
+          "description": "Whether Basewright may create the account. False means a host without it is refused rather than modified."
+        },
+        "shell": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "A login shell for a database service account is an unnecessary way in."
+        },
+        "group": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+          "description": "Absent means a group named after the account."
+        },
+        "home": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      }
+    },
+    "size": {
+      "type": "string",
+      "pattern": "^[0-9]+([.][0-9]+)?(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)$",
+      "description": "A quantity of bytes with an explicit unit. Decimal and binary units are both accepted and mean what they say."
+    }
+  }
+}

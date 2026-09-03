@@ -87,6 +87,31 @@ jobs:
       - name: No engine name in the core
         run: python -m pytest test/unit -k engine_names -v
 
+  schema:
+    name: Profile schema
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      # Every profile that lands in the repository has to load. There are none yet, and
+      # the command says so out loud rather than passing quietly over an empty directory.
+      - name: Every profile in the repository validates
+        run: python -m basewright.profiles --all profiles
+
+      # The schemas are closed, the fixtures exercise them, and the plan contract accepts
+      # a plan and refuses one carrying a secret value.
+      - name: Schemas and fixtures
+        run: python -m pytest test/unit -k schema -v
+
   assets:
     name: Documentation assets
     runs-on: ubuntu-24.04

@@ -484,6 +484,19 @@ def render_finished_vs_fit(theme: Theme) -> str:
 #: of the decision map, and test/unit/test_decision_records.py asserts it matches the
 #: files in docs/adr/ exactly -- in both directions -- so the picture cannot describe a
 #: set of decisions the repository does not have.
+#: The seven files a profile is made of, what each declares, and which step consumes it.
+#: A test keeps this list and the schemas in ``schema/`` in step with one another, so the
+#: picture cannot quietly describe a profile format that no longer exists.
+PROFILE_ANATOMY: tuple[tuple[str, str, str], ...] = (
+    ("profile.yml", "identity, OS families, defaults", "every step"),
+    ("support-matrix.yml", "version x OS x arch x end of life", "preflight"),
+    ("requirements.yml", "gate rules, and the way out of each", "preflight"),
+    ("layout.yml", "paths, modes, the service account", "plan, apply"),
+    ("sizing.yml", "parameter rules, each with its reason", "plan"),
+    ("packages.yml", "repositories, packages, service unit", "apply"),
+    ("verify.yml", "assertions about the running instance", "verify"),
+)
+
 DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "What it produces",
@@ -573,11 +586,78 @@ def render_decisions(theme: Theme) -> str:
     return svg(width, height, body)
 
 
+def render_profile_anatomy(theme: Theme) -> str:
+    """The seven files an engine is made of, and which step reads each one."""
+    width = 900
+    left, top, row_h = 24.0, 84.0, 34.0
+    file_x, declares_x, reader_x = left + 20, left + 210, left + 560
+    panel_w = width - left * 2
+    panel_h = 34.0 + len(PROFILE_ANATOMY) * row_h + 12.0
+    height = int(top + panel_h + 74)
+
+    body: list[str] = [
+        rect(0, 0, width, height, fill=theme.bg),
+        text(
+            left,
+            34,
+            "An engine, as data: seven files and the step that reads each one",
+            fill=theme.fg,
+            size=15,
+            weight="600",
+        ),
+        text(
+            left,
+            56,
+            "Adding an engine means adding this directory. It never means editing the core.",
+            fill=theme.muted,
+            size=12.5,
+        ),
+        rect(left, top, panel_w, panel_h, fill=theme.panel, stroke=theme.line),
+        text(file_x, top + 22, "FILE", fill=theme.muted, size=11, spacing="0.08em"),
+        text(declares_x, top + 22, "DECLARES", fill=theme.muted, size=11, spacing="0.08em"),
+        text(reader_x, top + 22, "READ BY", fill=theme.muted, size=11, spacing="0.08em"),
+        line(left + 12, top + 32, left + panel_w - 12, top + 32, stroke=theme.line),
+    ]
+
+    for index, (name, declares, reader) in enumerate(PROFILE_ANATOMY):
+        baseline = top + 34 + row_h * index + 22
+        body.append(text(file_x, baseline, name, fill=theme.accent, size=12.5, family=MONO))
+        body.append(text(declares_x, baseline, declares, fill=theme.fg, size=12.5))
+        body.append(text(reader_x, baseline, reader, fill=theme.muted, size=12.5))
+
+    body.append(
+        text(
+            left,
+            height - 40,
+            "Every file is closed by a JSON Schema: an unknown key is an error, so a profile "
+            "cannot imply behaviour the core does not have.",
+            fill=theme.muted,
+            size=12.5,
+        )
+    )
+    body.append(
+        text(
+            left,
+            height - 20,
+            "An eighth schema covers plan.json, the artifact these seven produce and the "
+            "only thing apply reads.",
+            fill=theme.muted,
+            size=12.5,
+        )
+    )
+    return svg(width, height, body)
+
+
 # ------------------------------------------------------------------- collection
 
 
-def capture(command: Sequence[str]) -> list[str]:
-    """Run a command and keep what it printed, prompt line included."""
+def capture(command: Sequence[str], *, display: str | None = None) -> list[str]:
+    """Run a command and keep what it printed, prompt line included.
+
+    ``display`` is the prompt line to draw, for a command whose invocation here is not
+    what a reader would type. It changes what the picture says to type; it never changes
+    what was run, and what was run is what the picture shows.
+    """
     result = subprocess.run(
         [sys.executable, "-m", *command],
         capture_output=True,
@@ -587,7 +667,8 @@ def capture(command: Sequence[str]) -> list[str]:
     )
     printed = (result.stdout + result.stderr).replace("\r\n", "\n").rstrip("\n")
     shown = " ".join(command[1:]) if command[0] == "basewright.cli" else " ".join(command)
-    lines = [f"$ basewright {shown}"]
+    prompt = display if display is not None else f"basewright {shown}"
+    lines = [f"$ {prompt}"]
     lines.extend(printed.split("\n") if printed else [])
     return [line_text.rstrip() for line_text in lines]
 
@@ -596,9 +677,17 @@ def build() -> dict[Path, str]:
     """Render every asset. Keys are paths relative to the repository root."""
     assets: dict[Path, str] = {}
 
+    refused = "test/fixtures/profiles/malformed"
     captures: dict[str, tuple[str, list[str]]] = {
         "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
         "cli-plan": ("basewright plan", capture(["basewright.cli", "plan"])),
+        "profile-refused": (
+            "a profile that does not hold up",
+            capture(
+                ["basewright.profiles", refused],
+                display=f"python -m basewright.profiles {refused}",
+            ),
+        ),
     }
 
     for theme in THEMES:
@@ -607,6 +696,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"decides-acts-{suffix}.svg"] = render_decides_acts(theme)
         assets[ASSETS / f"finished-vs-fit-{suffix}.svg"] = render_finished_vs_fit(theme)
         assets[ASSETS / f"decisions-{suffix}.svg"] = render_decisions(theme)
+        assets[ASSETS / f"profile-anatomy-{suffix}.svg"] = render_profile_anatomy(theme)
         for name, (title, lines) in captures.items():
             assets[ASSETS / f"{name}-{suffix}.svg"] = render_terminal(title, lines, theme)
 

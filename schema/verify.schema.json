@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/verify.schema.json",
+  "title": "Post-install assertions",
+  "description": "What must be true of the running instance for it to match the plan that produced it. Apply promises something; these are what proves it. This is the least settled of the seven files: its consumer is the verify step, which is built in Phase A, and the schema is expected to gain detail there.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "checks"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "remediation"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$",
+          "description": "A namespaced identifier, unique across the profile."
+        },
+        "kind": {
+          "enum": [
+            "service",
+            "port",
+            "connection",
+            "version",
+            "parameters",
+            "paths",
+            "log",
+            "backup",
+            "auth",
+            "account"
+          ],
+          "description": "What the check reads back. The kinds are properties of a running database service in general, which is why the core can carry them without knowing which engine is running."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression over what was read back and what the plan promised. Absent means the kind is assertion enough on its own."
+        },
+        "remediation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What to do when the instance does not match its plan. A verify failure is loud, because it means the instance is no longer what the documentation claims."
+        }
+      }
+    }
+  }
+}

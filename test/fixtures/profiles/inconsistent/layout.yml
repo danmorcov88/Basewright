@@ -1,0 +1,14 @@
+---
+engine: other
+paths:
+  data:
+    default: /var/lib/basewright/{{ engine }}/{{ instance }}/data
+    mode: "0700"
+    min_free: 20GB
+  log:
+    default: /var/log/basewright/{{ engine }}/{{ instance }}
+    mode: "0750"
+service_account:
+  name: inconsistent
+  create_if_missing: true
+  shell: /usr/sbin/nologin

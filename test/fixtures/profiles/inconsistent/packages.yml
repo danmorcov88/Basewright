@@ -1,0 +1,7 @@
+---
+engine: inconsistent
+families:
+  debian:
+    packages:
+      - inconsistent-server-{{ version }}
+    service: inconsistent@{{ version }}-{{ instance }}

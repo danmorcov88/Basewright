@@ -1,0 +1,14 @@
+---
+engine: inconsistent
+default_version: "4"
+versions:
+  - version: "3"
+    eol: "2029-05-01"
+    arch: [x86_64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["24.04"]
+      - family: suse
+        distro: opensuse
+        versions: ["15.6"]

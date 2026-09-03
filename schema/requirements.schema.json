@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/requirements.schema.json",
+  "title": "Engine preflight requirements",
+  "description": "Gate rules contributed by one engine, evaluated alongside the shared rules that apply to every engine. Each rule names what it checks, how badly it matters, and what to do about it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "rules"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" },
+      "description": "May be empty: an engine that adds nothing to the shared gates is a legitimate profile."
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "title", "expr", "remediation"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$",
+          "description": "A namespaced identifier, unique across the profile. It is what the refusal report prints, so it is also what someone greps for six months later."
+        },
+        "severity": {
+          "enum": ["block", "warn"],
+          "description": "There are two severities and there is no third. A block is not overridable at run time; if a block is wrong, the rule is wrong and the rule is fixed in Git."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "What the rule checks, in the words the report prints."
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression over host facts and the request that must be true for the rule to pass."
+        },
+        "applies_to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression deciding whether the rule is evaluated at all. Absent means always."
+        },
+        "remediation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What has to change on the host, or in the request, for the rule to pass. A refusal without this is a refusal nobody can act on."
+        }
+      }
+    }
+  }
+}

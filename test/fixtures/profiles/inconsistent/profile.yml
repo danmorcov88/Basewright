@@ -1,0 +1,13 @@
+---
+# Every file here is valid against its own schema. The contradictions are between files,
+# which is the class of mistake a single-file schema cannot see and the loader must.
+engine: inconsistent
+display_name: Inconsistent
+profile_version: "0.1.0"
+summary: Seven valid files that do not agree with one another.
+os_families:
+  - debian
+  - rhel
+defaults:
+  port: 6432
+  instance: main

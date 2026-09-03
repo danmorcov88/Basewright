@@ -1,0 +1,24 @@
+---
+engine: exampledb
+families:
+  debian:
+    repository:
+      name: exampledb
+      url: https://packages.example.invalid/apt
+      key_url: https://packages.example.invalid/apt/signing.asc
+      suite: "{{ os.codename }}"
+      components: [main]
+    packages:
+      - exampledb-server-{{ version }}
+      - exampledb-client-{{ version }}
+    service: exampledb@{{ version }}-{{ instance }}
+  rhel:
+    repository:
+      name: exampledb
+      url: https://packages.example.invalid/yum/el{{ os.major }}
+      key_url: https://packages.example.invalid/yum/signing.asc
+      gpg_check: true
+    packages:
+      - exampledb-server-{{ version }}
+      - exampledb-client-{{ version }}
+    service: exampledb@{{ version }}-{{ instance }}

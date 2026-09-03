@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/sizing.schema.json",
+  "title": "Sizing rules",
+  "description": "How each tuneable parameter is derived from the facts of the host. Every rule carries its own justification, and that justification is rendered into the plan next to the computed value: a number without a reason is the situation this project exists to end.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "rules"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "parameter", "expr", "why"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$",
+          "description": "A namespaced identifier, unique across the profile, printed in the plan beside the value it produced."
+        },
+        "parameter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The configuration setting this rule sets. Two rules may not set the same one."
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression over host facts and previously computed parameters. Arithmetic lives here, as data, and is evaluated by the planner in Python where it can be unit-tested."
+        },
+        "unit": {
+          "enum": ["bytes", "milliseconds", "seconds", "count", "ratio", "text"],
+          "description": "How the computed value is interpreted and rendered. Absent means count."
+        },
+        "min": {
+          "$ref": "#/$defs/bound",
+          "description": "A floor applied after evaluation. The plan reports that the floor was reached."
+        },
+        "max": {
+          "$ref": "#/$defs/bound",
+          "description": "A ceiling applied after evaluation. The plan reports that the ceiling was reached."
+        },
+        "warn_above": {
+          "$ref": "#/$defs/bound",
+          "description": "A value that is permitted but worth saying out loud. It raises a warning; it does not clamp."
+        },
+        "round_to": {
+          "$ref": "#/$defs/bound",
+          "description": "Round the result down to a multiple of this, so a generated value looks like a value a person would have chosen."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 10,
+          "description": "The reasoning, in a sentence or two, rendered into the plan. This field is the reason the plan is worth reviewing."
+        }
+      }
+    },
+    "bound": {
+      "oneOf": [
+        { "type": "number" },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+([.][0-9]+)?(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB|ms|s)?$"
+        }
+      ]
+    }
+  }
+}
