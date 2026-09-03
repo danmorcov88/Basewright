@@ -180,9 +180,20 @@ A number without a reason is exactly the situation Basewright exists to end.
 
 ## Quickstart
 
-Not yet — and the honest version of that is worth showing rather than describing. Every
-terminal image in this repository is produced by running the command and keeping what it
-printed, so a verb that is not built renders as a verb that is not built:
+Partly. Every terminal image in this repository is produced by running the command and
+keeping what it printed, so this section shows exactly as much as works today and no more.
+
+`gather` reads what a host reported and normalizes it into the model every rule is written
+against:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-gather-dark.svg">
+  <img alt="basewright gather summarising a host from a facts document"
+       src="docs/assets/cli-gather-light.svg" width="700">
+</picture>
+
+Collecting those facts from a live machine runs over SSH, which is Ansible's half of the
+split and is not built yet. The verbs that follow are still a promise, and they say so:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-plan-dark.svg">
@@ -202,6 +213,23 @@ This section fills in with the real console output of each step as the roadmap c
 cannot fall behind: `tools/render_assets.py --check` regenerates every image in CI and fails
 the build if what is committed differs by a single byte. Progress is tracked in
 [docs/dev/STATUS.md](docs/dev/STATUS.md).
+
+### What a host is, to a rule
+
+Facts are normalized before anything reads them, so a change in how they are collected
+cannot ripple into the gate engine or the planner. The model carries what the rules need in
+order to reach a verdict, and nothing else:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/facts-model-dark.svg">
+  <img alt="The facts a host is described by, and which rule reads each one"
+       src="docs/assets/facts-model-light.svg" width="900">
+</picture>
+
+The collector reports which packaging family the operating system belongs to; the core
+never infers it. Working out that one distribution is packaged like another is knowledge
+about operating systems, and it belongs where the observation is made — the same reason no
+engine name appears in the core.
 
 ## Supported engines
 

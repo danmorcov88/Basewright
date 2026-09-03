@@ -30,9 +30,20 @@ def test_apply_is_not_a_verb_of_this_cli() -> None:
     assert "apply" not in VERBS
 
 
-@pytest.mark.parametrize("verb", sorted(VERBS))
+#: The verbs that are still a promise. Each one exits 69 and points at the status page,
+#: so an unbuilt verb is a fact a reader can check rather than a thing that hangs.
+UNBUILT = ("preflight", "plan", "verify")
+
+
+@pytest.mark.parametrize("verb", UNBUILT)
 def test_unbuilt_verbs_exit_predictably(verb: str) -> None:
     assert main([verb]) == 69
+
+
+def test_the_list_of_unbuilt_verbs_is_kept_honest() -> None:
+    """A verb that starts working and stays on this list makes the test above vacuous."""
+    assert set(UNBUILT) < set(VERBS)
+    assert "gather" not in UNBUILT
 
 
 def test_version_string_is_set() -> None:
