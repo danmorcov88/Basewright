@@ -480,6 +480,99 @@ def render_finished_vs_fit(theme: Theme) -> str:
     return svg(width, height, body)
 
 
+#: The decision records, grouped by the question each one answers. This is the source
+#: of the decision map, and test/unit/test_decision_records.py asserts it matches the
+#: files in docs/adr/ exactly -- in both directions -- so the picture cannot describe a
+#: set of decisions the repository does not have.
+DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "What it produces",
+        (
+            ("0001", "plan before apply"),
+            ("0009", "rules explain themselves"),
+            ("0010", "match, or refuse"),
+        ),
+    ),
+    (
+        "How it is built",
+        (
+            ("0002", "engines are data"),
+            ("0008", "Python decides, Ansible acts"),
+            ("0011", "packages, never source"),
+        ),
+    ),
+    (
+        "What it refuses",
+        (
+            ("0003", "humans choose the version"),
+            ("0004", "two severities, no override"),
+            ("0012", "starts at a reachable host"),
+            ("0013", "backups belong elsewhere"),
+        ),
+    ),
+    (
+        "How it is operated",
+        (
+            ("0005", "Semaphore is the interface"),
+            ("0006", "one technical account"),
+            ("0007", "secrets stay out of artifacts"),
+        ),
+    ),
+)
+
+
+def render_decisions(theme: Theme) -> str:
+    """The decision records, grouped by the question each one answers."""
+    width = 980
+    left, top, gap = 18.0, 52.0, 16.0
+    column_w = (width - left * 2 - gap * (len(DECISIONS) - 1)) / len(DECISIONS)
+    rows = max(len(entries) for _, entries in DECISIONS)
+    panel_h = 46.0 + rows * 40.0 + 8.0
+    height = int(top + panel_h + 46)
+
+    body: list[str] = [
+        rect(0, 0, width, height, fill=theme.bg),
+        text(
+            left,
+            30,
+            "Thirteen decisions, and the question each one answers",
+            fill=theme.fg,
+            size=15,
+            weight="600",
+        ),
+    ]
+
+    for index, (heading, entries) in enumerate(DECISIONS):
+        x = left + index * (column_w + gap)
+        body.extend(
+            (
+                rect(x, top, column_w, panel_h, fill=theme.panel, stroke=theme.line),
+                text(x + 16, top + 27, heading, fill=theme.accent, size=13, weight="600"),
+                line(x + 16, top + 38, x + column_w - 16, top + 38, stroke=theme.line),
+            )
+        )
+        for row, (number, title) in enumerate(entries):
+            y = top + 60 + row * 40
+            body.extend(
+                (
+                    text(x + 16, y, number, fill=theme.muted, size=11.5, family=MONO),
+                    text(x + 16, y + 17, title, fill=theme.fg, size=12.5),
+                )
+            )
+
+    body.append(
+        text(
+            left,
+            height - 18,
+            "Each record states the context, the decision, its consequences and the "
+            "alternatives that were rejected.",
+            fill=theme.muted,
+            size=12.5,
+        )
+    )
+    return svg(width, height, body)
+
+
 # ------------------------------------------------------------------- collection
 
 
@@ -513,6 +606,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"pipeline-{suffix}.svg"] = render_pipeline(theme)
         assets[ASSETS / f"decides-acts-{suffix}.svg"] = render_decides_acts(theme)
         assets[ASSETS / f"finished-vs-fit-{suffix}.svg"] = render_finished_vs_fit(theme)
+        assets[ASSETS / f"decisions-{suffix}.svg"] = render_decisions(theme)
         for name, (title, lines) in captures.items():
             assets[ASSETS / f"{name}-{suffix}.svg"] = render_terminal(title, lines, theme)
 
