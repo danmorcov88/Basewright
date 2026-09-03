@@ -24,7 +24,7 @@ Last reviewed: 2026-09-03.
 | Engine-name guard over the core                   | done        |
 | CLI skeleton, no verb implemented                 | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0013           | not started |
+| Architecture decision records 0001–0013           | done        |
 | Profile JSON Schema                               | not started |
 | Profile loader with schema validation             | not started |
 | Fact model and normalization                      | not started |
