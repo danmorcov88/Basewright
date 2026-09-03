@@ -15,7 +15,6 @@ from basewright.profiles.errors import (
     InvalidProfileError,
     MissingProfileError,
     ProfileError,
-    ProfileProblem,
 )
 from basewright.profiles.loader import load_profile, load_profiles, profile_directories
 from basewright.profiles.model import (
@@ -30,7 +29,9 @@ from basewright.profiles.model import (
     SupportedVersion,
     VerifyCheck,
 )
-from basewright.profiles.schema import PROFILE_FILES, schema_directory
+from basewright.profiles.schema import PROFILE_FILES
+from basewright.report.problems import Problem
+from basewright.schema import schema_directory
 
 __all__ = [
     "PROFILE_FILES",
@@ -39,9 +40,9 @@ __all__ = [
     "MissingProfileError",
     "PackageSet",
     "PathSpec",
+    "Problem",
     "Profile",
     "ProfileError",
-    "ProfileProblem",
     "Repository",
     "ServiceAccount",
     "SizingRule",

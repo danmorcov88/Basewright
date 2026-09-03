@@ -18,8 +18,8 @@ import pytest
 from basewright.profiles import (
     InvalidProfileError,
     MissingProfileError,
+    Problem,
     Profile,
-    ProfileProblem,
     load_profile,
     load_profiles,
 )
@@ -34,14 +34,14 @@ def profile() -> Profile:
     return load_profile(FIXTURES / "exampledb")
 
 
-def refuse(name: str) -> list[ProfileProblem]:
+def refuse(name: str) -> list[Problem]:
     """Load a fixture that is meant to fail, and return why it did."""
     with pytest.raises(InvalidProfileError) as raised:
         load_profile(FIXTURES / name)
     return raised.value.problems
 
 
-def located(problems: list[ProfileProblem]) -> list[str]:
+def located(problems: list[Problem]) -> list[str]:
     return [f"{problem.file}:{problem.location}" for problem in problems]
 
 
@@ -209,7 +209,7 @@ def test_a_file_that_is_not_a_mapping_says_so(tmp_path: Path) -> None:
     assert problems[0].message.startswith("is list, not a mapping")
 
 
-def _problems(directory: Path) -> list[ProfileProblem]:
+def _problems(directory: Path) -> list[Problem]:
     with pytest.raises(InvalidProfileError) as raised:
         load_profile(directory)
     return raised.value.problems
@@ -307,7 +307,7 @@ def test_an_identifier_used_twice_is_caught() -> None:
     assert problem.message == "'inconsistent.cache_size' is already used by rules[0]"
 
 
-def _only(fixture: str, location: str) -> ProfileProblem:
+def _only(fixture: str, location: str) -> Problem:
     problems = [p for p in refuse(fixture) if f"{p.file}:{p.location}" == location]
     assert len(problems) == 1, f"expected exactly one problem at {location}"
     return problems[0]

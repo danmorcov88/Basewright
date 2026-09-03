@@ -497,6 +497,25 @@ PROFILE_ANATOMY: tuple[tuple[str, str, str], ...] = (
     ("verify.yml", "assertions about the running instance", "verify"),
 )
 
+#: What a host is described by, in the order the model declares it. Kept in step with
+#: the model by a test, so the picture cannot describe facts nothing collects.
+FACTS_MODEL: tuple[tuple[str, str, str], ...] = (
+    ("host", "the machine, as it was addressed", "every report"),
+    ("collected_at", "when it was observed, in UTC", "apply, before trusting a plan"),
+    ("os", "family, distribution, version, codename", "os.supported, packages"),
+    ("arch", "one spelling of the machine", "arch.supported"),
+    ("cpu", "cores, threads, model", "cpu.min_cores, sizing"),
+    ("memory", "installed, available, swap", "mem.min_total, sizing"),
+    ("mounts", "path, filesystem, free space, spindle", "every disk rule, sizing"),
+    ("listening_ports", "what already answers, and on what", "port.free"),
+    ("services", "what is already installed", "the conflict rule"),
+    ("locales", "what the host can be asked for", "locale.present"),
+    ("privileges", "the account, and whether it escalates", "host.privilege"),
+    ("time_sync", "the clock, and whether it is in step", "time.sync"),
+    ("kernel", "swappiness, huge pages, overcommit", "os.thp, os.swappiness"),
+    ("firewall", "whether it is on, and what it admits", "firewall.state"),
+)
+
 DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "What it produces",
@@ -586,66 +605,95 @@ def render_decisions(theme: Theme) -> str:
     return svg(width, height, body)
 
 
-def render_profile_anatomy(theme: Theme) -> str:
-    """The seven files an engine is made of, and which step reads each one."""
-    width = 900
+def render_table(
+    theme: Theme,
+    *,
+    title: str,
+    subtitle: str,
+    headings: tuple[str, str, str],
+    rows: Sequence[tuple[str, str, str]],
+    footer: Sequence[str],
+    columns: tuple[float, float, float] = (20, 210, 560),
+    width: int = 900,
+) -> str:
+    """Draw a three-column table: a name, what it carries, and what reads it.
+
+    Two diagrams answer the same question about different things -- what a profile is made
+    of, and what a host is described by -- so they are drawn by the same code. A second
+    copy of this would drift in spacing first and in substance later.
+    """
     left, top, row_h = 24.0, 84.0, 34.0
-    file_x, declares_x, reader_x = left + 20, left + 210, left + 560
+    name_x, middle_x, reader_x = (left + offset for offset in columns)
     panel_w = width - left * 2
-    panel_h = 34.0 + len(PROFILE_ANATOMY) * row_h + 12.0
-    height = int(top + panel_h + 74)
+    panel_h = 34.0 + len(rows) * row_h + 12.0
+    height = int(top + panel_h + 34 + len(footer) * 20)
 
     body: list[str] = [
         rect(0, 0, width, height, fill=theme.bg),
-        text(
-            left,
-            34,
-            "An engine, as data: seven files and the step that reads each one",
-            fill=theme.fg,
-            size=15,
-            weight="600",
-        ),
-        text(
-            left,
-            56,
-            "Adding an engine means adding this directory. It never means editing the core.",
-            fill=theme.muted,
-            size=12.5,
-        ),
+        text(left, 34, title, fill=theme.fg, size=15, weight="600"),
+        text(left, 56, subtitle, fill=theme.muted, size=12.5),
         rect(left, top, panel_w, panel_h, fill=theme.panel, stroke=theme.line),
-        text(file_x, top + 22, "FILE", fill=theme.muted, size=11, spacing="0.08em"),
-        text(declares_x, top + 22, "DECLARES", fill=theme.muted, size=11, spacing="0.08em"),
-        text(reader_x, top + 22, "READ BY", fill=theme.muted, size=11, spacing="0.08em"),
+        text(name_x, top + 22, headings[0], fill=theme.muted, size=11, spacing="0.08em"),
+        text(middle_x, top + 22, headings[1], fill=theme.muted, size=11, spacing="0.08em"),
+        text(reader_x, top + 22, headings[2], fill=theme.muted, size=11, spacing="0.08em"),
         line(left + 12, top + 32, left + panel_w - 12, top + 32, stroke=theme.line),
     ]
 
-    for index, (name, declares, reader) in enumerate(PROFILE_ANATOMY):
+    for index, (name, middle, reader) in enumerate(rows):
         baseline = top + 34 + row_h * index + 22
-        body.append(text(file_x, baseline, name, fill=theme.accent, size=12.5, family=MONO))
-        body.append(text(declares_x, baseline, declares, fill=theme.fg, size=12.5))
+        body.append(text(name_x, baseline, name, fill=theme.accent, size=12.5, family=MONO))
+        body.append(text(middle_x, baseline, middle, fill=theme.fg, size=12.5))
         body.append(text(reader_x, baseline, reader, fill=theme.muted, size=12.5))
 
-    body.append(
-        text(
-            left,
-            height - 40,
+    for index, note in enumerate(footer):
+        body.append(
+            text(
+                left,
+                top + panel_h + 26 + index * 20,
+                note,
+                fill=theme.muted,
+                size=12.5,
+            )
+        )
+    return svg(width, height, body)
+
+
+def render_profile_anatomy(theme: Theme) -> str:
+    """The seven files an engine is made of, and which step reads each one."""
+    return render_table(
+        theme,
+        title="An engine, as data: seven files and the step that reads each one",
+        subtitle="Adding an engine means adding this directory. It never means editing the core.",
+        headings=("FILE", "DECLARES", "READ BY"),
+        rows=PROFILE_ANATOMY,
+        footer=(
             "Every file is closed by a JSON Schema: an unknown key is an error, so a profile "
             "cannot imply behaviour the core does not have.",
-            fill=theme.muted,
-            size=12.5,
-        )
+            "An eighth schema covers plan.json, the artifact these seven produce and the only "
+            "thing apply reads.",
+        ),
     )
-    body.append(
-        text(
-            left,
-            height - 20,
-            "An eighth schema covers plan.json, the artifact these seven produce and the "
-            "only thing apply reads.",
-            fill=theme.muted,
-            size=12.5,
-        )
+
+
+def render_facts_model(theme: Theme) -> str:
+    """What a host is described by, and which rule reads each part of it."""
+    return render_table(
+        theme,
+        title="A host, as the rules see it: every fact, and what consults it",
+        subtitle=(
+            "The model is not everything a machine could be asked. It is what the rules need "
+            "to reach a verdict."
+        ),
+        headings=("FACT", "CARRIES", "READ BY"),
+        rows=FACTS_MODEL,
+        footer=(
+            "A fact nothing consults is a fact that rots quietly, because nothing fails when "
+            "it stops being collected correctly.",
+            "Facts a blocking rule needs are required; the ones only a warning reads may be "
+            "absent, and that warning is skipped rather than guessed.",
+        ),
+        columns=(20, 190, 540),
     )
-    return svg(width, height, body)
 
 
 # ------------------------------------------------------------------- collection
@@ -678,9 +726,14 @@ def build() -> dict[Path, str]:
     assets: dict[Path, str] = {}
 
     refused = "test/fixtures/profiles/malformed"
+    facts = "test/fixtures/hosts/typical.json"
     captures: dict[str, tuple[str, list[str]]] = {
         "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
         "cli-plan": ("basewright plan", capture(["basewright.cli", "plan"])),
+        "cli-gather": (
+            "basewright gather",
+            capture(["basewright.cli", "gather", "--facts", facts]),
+        ),
         "profile-refused": (
             "a profile that does not hold up",
             capture(
@@ -697,6 +750,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"finished-vs-fit-{suffix}.svg"] = render_finished_vs_fit(theme)
         assets[ASSETS / f"decisions-{suffix}.svg"] = render_decisions(theme)
         assets[ASSETS / f"profile-anatomy-{suffix}.svg"] = render_profile_anatomy(theme)
+        assets[ASSETS / f"facts-model-{suffix}.svg"] = render_facts_model(theme)
         for name, (title, lines) in captures.items():
             assets[ASSETS / f"{name}-{suffix}.svg"] = render_terminal(title, lines, theme)
 

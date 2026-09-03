@@ -11,7 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from basewright.profiles.schema import PROFILE_FILES, schema_directory, schema_name_for
+from basewright.profiles.schema import PROFILE_FILES, schema_name_for
+from basewright.schema import schema_directory
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))

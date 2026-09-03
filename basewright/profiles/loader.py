@@ -24,7 +24,7 @@ from typing import Any
 
 import yaml
 
-from basewright.profiles.errors import InvalidProfileError, MissingProfileError, ProfileProblem
+from basewright.profiles.errors import InvalidProfileError, MissingProfileError
 from basewright.profiles.model import (
     GateRule,
     PackageSet,
@@ -37,7 +37,9 @@ from basewright.profiles.model import (
     SupportedVersion,
     VerifyCheck,
 )
-from basewright.profiles.schema import PROFILE_FILES, problems_in, schema_name_for
+from basewright.profiles.schema import PROFILE_FILES, schema_name_for
+from basewright.report.problems import Problem
+from basewright.schema import problems_in
 
 Document = dict[str, Any]
 Documents = dict[str, Document]
@@ -92,16 +94,16 @@ def profile_directories(directory: Path) -> list[Path]:
 # ------------------------------------------------------------------------------- reading
 
 
-def _read(directory: Path) -> tuple[Documents, list[ProfileProblem]]:
+def _read(directory: Path) -> tuple[Documents, list[Problem]]:
     """Parse every file of the profile, collecting the ones that could not be read."""
     documents: Documents = {}
-    problems: list[ProfileProblem] = []
+    problems: list[Problem] = []
 
     for name in PROFILE_FILES:
         path = directory / name
         if not path.is_file():
             problems.append(
-                ProfileProblem(
+                Problem(
                     file=name,
                     location="",
                     message="is missing",
@@ -118,7 +120,7 @@ def _read(directory: Path) -> tuple[Documents, list[ProfileProblem]]:
             document = yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as error:
             problems.append(
-                ProfileProblem(
+                Problem(
                     file=name,
                     location="",
                     message="is not valid YAML",
@@ -129,7 +131,7 @@ def _read(directory: Path) -> tuple[Documents, list[ProfileProblem]]:
 
         if not isinstance(document, dict):
             problems.append(
-                ProfileProblem(
+                Problem(
                     file=name,
                     location="",
                     message=f"is {type(document).__name__}, not a mapping of keys to values",
@@ -146,7 +148,7 @@ def _read(directory: Path) -> tuple[Documents, list[ProfileProblem]]:
 # --------------------------------------------------------------------------- reconciling
 
 
-def _reconcile(documents: Documents) -> Iterator[ProfileProblem]:
+def _reconcile(documents: Documents) -> Iterator[Problem]:
     """The agreements between files, which no single file's schema can enforce."""
     profile = documents["profile.yml"]
     engine = str(profile["engine"])
@@ -160,13 +162,13 @@ def _reconcile(documents: Documents) -> Iterator[ProfileProblem]:
     yield from _parameters_are_set_once(documents["sizing.yml"])
 
 
-def _engine_agrees(documents: Documents, engine: str) -> Iterator[ProfileProblem]:
+def _engine_agrees(documents: Documents, engine: str) -> Iterator[Problem]:
     for name, document in documents.items():
         if name == "profile.yml":
             continue
         found = str(document["engine"])
         if found != engine:
-            yield ProfileProblem(
+            yield Problem(
                 file=name,
                 location="engine",
                 message=f"is {found!r}, but profile.yml declares {engine!r}",
@@ -178,11 +180,11 @@ def _engine_agrees(documents: Documents, engine: str) -> Iterator[ProfileProblem
             )
 
 
-def _default_version_exists(matrix: Document) -> Iterator[ProfileProblem]:
+def _default_version_exists(matrix: Document) -> Iterator[Problem]:
     default = str(matrix["default_version"])
     known = [str(entry["version"]) for entry in matrix["versions"]]
     if default not in known:
-        yield ProfileProblem(
+        yield Problem(
             file="support-matrix.yml",
             location="default_version",
             message=f"is {default!r}, which is not one of the versions listed",
@@ -193,16 +195,14 @@ def _default_version_exists(matrix: Document) -> Iterator[ProfileProblem]:
         )
 
 
-def _families_are_declared(
-    documents: Documents, families: Iterable[str]
-) -> Iterator[ProfileProblem]:
+def _families_are_declared(documents: Documents, families: Iterable[str]) -> Iterator[Problem]:
     declared = set(families)
     matrix = documents["support-matrix.yml"]
     for index, entry in enumerate(matrix["versions"]):
         for position, supported in enumerate(entry["supported_os"]):
             family = str(supported["family"])
             if family not in declared:
-                yield ProfileProblem(
+                yield Problem(
                     file="support-matrix.yml",
                     location=f"versions[{index}].supported_os[{position}].family",
                     message=f"is {family!r}, which profile.yml does not declare",
@@ -215,12 +215,10 @@ def _families_are_declared(
                 )
 
 
-def _families_are_installable(
-    packages: Document, families: Iterable[str]
-) -> Iterator[ProfileProblem]:
+def _families_are_installable(packages: Document, families: Iterable[str]) -> Iterator[Problem]:
     covered = set(packages["families"])
     for family in sorted(set(families) - covered):
-        yield ProfileProblem(
+        yield Problem(
             file="packages.yml",
             location=f"families.{family}",
             message="is declared in profile.yml but has no packages here",
@@ -232,7 +230,7 @@ def _families_are_installable(
         )
 
 
-def _identifiers_are_unique(documents: Documents) -> Iterator[ProfileProblem]:
+def _identifiers_are_unique(documents: Documents) -> Iterator[Problem]:
     """Identifiers are what a report prints and what a person greps for. Two of the same
     identifier means one of the two is invisible."""
     sources: tuple[tuple[str, str, str], ...] = (
@@ -250,7 +248,7 @@ def _identifiers_are_unique(documents: Documents) -> Iterator[ProfileProblem]:
                 continue
             first_file, first_location = first
             used = first_location if first_file == name else f"{first_file} {first_location}"
-            yield ProfileProblem(
+            yield Problem(
                 file=name,
                 location=f"{collection}[{index}].{key}",
                 message=f"{identifier!r} is already used by {used}",
@@ -262,12 +260,12 @@ def _identifiers_are_unique(documents: Documents) -> Iterator[ProfileProblem]:
             )
 
 
-def _parameters_are_set_once(sizing: Document) -> Iterator[ProfileProblem]:
+def _parameters_are_set_once(sizing: Document) -> Iterator[Problem]:
     seen: dict[str, int] = {}
     for index, rule in enumerate(sizing["rules"]):
         parameter = str(rule["parameter"])
         if parameter in seen:
-            yield ProfileProblem(
+            yield Problem(
                 file="sizing.yml",
                 location=f"rules[{index}].parameter",
                 message=f"sets {parameter!r}, which rules[{seen[parameter]}] already sets",

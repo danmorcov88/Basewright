@@ -22,12 +22,14 @@ Last reviewed: 2026-09-03.
 | ------------------------------------------------- | ----------- |
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
-| CLI skeleton, no verb implemented                 | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
 | Architecture decision records 0001–0013           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
-| Fact model and normalization                      | not started |
+| Facts contract, typed model and normalization     | done        |
+| `gather`, from a facts document                   | done        |
+| `gather`, from a live host                        | Phase A     |
+| `preflight`, `plan` and `verify`                  | not started |
 | Gate engine and severity resolution               | not started |
 | Planner: sizing evaluation, layout, plan assembly | not started |
 | Report rendering, human and JSON                  | not started |
@@ -66,17 +68,28 @@ confirmed, they are documented as assumptions rather than presented as policy.
 
 ## Known gaps
 
-- No verb of the CLI does anything yet; every one exits 69 and points here.
+- `gather` reads a facts document. Collecting those facts from a live host runs over SSH
+  or WinRM, which is Ansible's half of the split and lands in Phase A. Until then the verb
+  says so rather than implying a machine was contacted. `preflight`, `plan` and `verify`
+  still exit 69 and point here.
 - No engine profile exists. `profiles/` is empty, so the schema job in CI walks it and
   says so rather than passing quietly. What exercises the schema today is a fixture
   profile for a fictional engine, under `test/fixtures/profiles/`, which is deliberately
   not parked in `profiles/` where it would make this page read better than it should.
 - `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
   step, built in Phase A, and its schema is expected to gain detail there.
-- The `host` section of `plan.json` describes facts in a shape the fact model will tighten.
-  The plan is a versioned contract, so that tightening is a schema version bump rather than
-  a surprise.
-- The quickstart in the README is deliberately absent rather than aspirational. The two
-  terminal images it does carry are real captures of a tool that does not do anything yet.
+- **The plan contract is not frozen.** `plan.json` carries `schema_version: "1"` and
+  nothing has ever produced one, so it is still being written: the `host` section was
+  reshaped alongside the fact model without a version bump, because bumping a contract
+  with no second reader is ceremony. It freezes when `plan` produces its first artifact,
+  and every change after that is a version.
+- The fact model is finished when every shared gate can be written against it. The gate
+  engine finds out, and anything missing shows up there rather than being guessed at now.
+- Facts a blocking rule needs are required by the contract; the ones only a warning reads
+  may be absent. A host that does not report them gets that warning skipped, which is a
+  reportable outcome rather than a guess.
+- The quickstart in the README is deliberately absent rather than aspirational. Every
+  terminal image it carries is a real capture, including the ones of verbs that do not
+  work yet.
 - The plan rendering in the README is a specification of the artifact's shape, labelled as
   such, and is replaced by a generated capture once the planner produces one.

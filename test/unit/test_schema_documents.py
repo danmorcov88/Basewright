@@ -25,7 +25,9 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from basewright.profiles.schema import PLAN_SCHEMA, PROFILE_FILES, schema_directory, schema_name_for
+from basewright.planner.schema import PLAN_SCHEMA
+from basewright.profiles.schema import PROFILE_FILES, schema_name_for
+from basewright.schema import schema_directory
 
 SCHEMA_DIR = schema_directory()
 

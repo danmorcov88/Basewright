@@ -1,0 +1,85 @@
+{
+  "schema_version": "1",
+  "collected_at": "2026-09-03T10:14:22Z",
+  "host": "db-typical.invalid",
+  "os": {
+    "family": "debian",
+    "distro": "ubuntu",
+    "version": "24.04",
+    "codename": "noble",
+    "pretty_name": "Ubuntu 24.04.1 LTS",
+    "kernel": "6.8.0-45-generic"
+  },
+  "arch": "x86_64",
+  "cpu": {
+    "cores": 8,
+    "threads": 16,
+    "model": "Xeon Silver 4310"
+  },
+  "memory": {
+    "total_bytes": 34359738368,
+    "available_bytes": 31138512896,
+    "swap_bytes": 4294967296
+  },
+  "mounts": [
+    {
+      "path": "/",
+      "filesystem": "ext4",
+      "total_bytes": 53687091200,
+      "free_bytes": 40802189312,
+      "device": "/dev/sda1",
+      "rotational": false
+    },
+    {
+      "path": "/var/lib",
+      "filesystem": "ext4",
+      "total_bytes": 1099511627776,
+      "free_bytes": 549755813888,
+      "device": "/dev/sdb1",
+      "rotational": false
+    },
+    {
+      "path": "/backup",
+      "filesystem": "xfs",
+      "total_bytes": 4398046511104,
+      "free_bytes": 2199023255552,
+      "device": "/dev/sdc1",
+      "rotational": true
+    }
+  ],
+  "network": {
+    "listening_ports": [
+      {
+        "port": 22,
+        "address": "0.0.0.0",
+        "protocol": "tcp",
+        "process": "sshd"
+      }
+    ]
+  },
+  "services": [],
+  "locales": [
+    "C.UTF-8",
+    "en_US.UTF-8"
+  ],
+  "privileges": {
+    "user": "basewright",
+    "can_escalate": true
+  },
+  "time_sync": {
+    "service": "chrony",
+    "synchronized": true
+  },
+  "kernel": {
+    "swappiness": 60,
+    "transparent_hugepages": "always",
+    "overcommit_memory": 0
+  },
+  "firewall": {
+    "service": "ufw",
+    "active": true,
+    "open_ports": [
+      22
+    ]
+  }
+}
