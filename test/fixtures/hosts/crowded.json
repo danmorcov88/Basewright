@@ -1,0 +1,91 @@
+{
+  "schema_version": "1",
+  "collected_at": "2026-09-03T10:14:22Z",
+  "host": "db-crowded.invalid",
+  "os": {
+    "family": "debian",
+    "distro": "ubuntu",
+    "version": "22.04",
+    "codename": "jammy",
+    "pretty_name": "Ubuntu 22.04.5 LTS",
+    "kernel": "5.15.0-119-generic"
+  },
+  "arch": "x86_64",
+  "cpu": {
+    "cores": 4,
+    "threads": 8
+  },
+  "memory": {
+    "total_bytes": 8589934592,
+    "available_bytes": 2147483648,
+    "swap_bytes": 2147483648
+  },
+  "mounts": [
+    {
+      "path": "/",
+      "filesystem": "ext4",
+      "total_bytes": 53687091200,
+      "free_bytes": 6442450944,
+      "device": "/dev/sda1",
+      "rotational": true
+    },
+    {
+      "path": "/backup",
+      "filesystem": "ext4",
+      "total_bytes": 2199023255552,
+      "free_bytes": 2147483648,
+      "device": "/dev/sdb1",
+      "rotational": true
+    }
+  ],
+  "network": {
+    "listening_ports": [
+      {
+        "port": 22,
+        "address": "0.0.0.0",
+        "protocol": "tcp",
+        "process": "sshd"
+      },
+      {
+        "port": 6432,
+        "address": "127.0.0.1",
+        "protocol": "tcp",
+        "process": "exampledb"
+      }
+    ]
+  },
+  "services": [
+    {
+      "name": "exampledb",
+      "version": "2",
+      "state": "running",
+      "ports": [
+        6432
+      ]
+    }
+  ],
+  "locales": [
+    "C.UTF-8",
+    "en_US.UTF-8"
+  ],
+  "privileges": {
+    "user": "basewright",
+    "can_escalate": false
+  },
+  "time_sync": {
+    "service": "chrony",
+    "synchronized": false
+  },
+  "kernel": {
+    "swappiness": 60,
+    "transparent_hugepages": "always",
+    "overcommit_memory": 0
+  },
+  "firewall": {
+    "service": "firewalld",
+    "active": true,
+    "open_ports": [
+      22
+    ]
+  }
+}
