@@ -13,10 +13,13 @@ convention someone has to remember.
 
 from __future__ import annotations
 
-from basewright.profiles.errors import ProfileProblem
-from basewright.profiles.schema import PLAN_SCHEMA, problems_in
+from basewright.report.problems import Problem
+from basewright.schema import problems_in
+
+#: The schema the artifact is checked against.
+PLAN_SCHEMA = "plan.schema.json"
 
 
-def plan_problems(document: object) -> list[ProfileProblem]:
+def plan_problems(document: object) -> list[Problem]:
     """Return every way ``document`` fails to be a plan. Empty means it is one."""
     return problems_in(document, schema_name=PLAN_SCHEMA, file="plan.json")
