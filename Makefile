@@ -42,6 +42,7 @@ test:  ## Run the unit and golden test suites with coverage
 
 .PHONY: schema
 schema:  ## Validate every profile against the profile JSON Schema
+	$(PYTHON) -m basewright.profiles --all profiles
 	$(PYTHON) -m pytest test/unit -k schema
 
 .PHONY: guard

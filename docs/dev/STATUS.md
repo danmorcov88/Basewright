@@ -25,8 +25,8 @@ Last reviewed: 2026-09-03.
 | CLI skeleton, no verb implemented                 | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
 | Architecture decision records 0001–0013           | done        |
-| Profile JSON Schema                               | not started |
-| Profile loader with schema validation             | not started |
+| Profile JSON Schema, and the plan contract        | done        |
+| Profile loader with schema validation             | done        |
 | Fact model and normalization                      | not started |
 | Gate engine and severity resolution               | not started |
 | Planner: sizing evaluation, layout, plan assembly | not started |
@@ -41,7 +41,6 @@ for them to check:
 
 - `ansible-lint` — waits for the first playbook and role, in Phase A.
 - `molecule` — waits for the first engine role, in Phase A.
-- Profile schema validation — waits for the schema, in Foundation.
 - Plan determinism — waits for the planner, in Foundation.
 - Quickstart output assertions — wait for a working end-to-end path, in Phase A.
 
@@ -68,7 +67,15 @@ confirmed, they are documented as assumptions rather than presented as policy.
 ## Known gaps
 
 - No verb of the CLI does anything yet; every one exits 69 and points here.
-- No engine profile exists, so there is nothing for the schema to validate against.
+- No engine profile exists. `profiles/` is empty, so the schema job in CI walks it and
+  says so rather than passing quietly. What exercises the schema today is a fixture
+  profile for a fictional engine, under `test/fixtures/profiles/`, which is deliberately
+  not parked in `profiles/` where it would make this page read better than it should.
+- `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
+  step, built in Phase A, and its schema is expected to gain detail there.
+- The `host` section of `plan.json` describes facts in a shape the fact model will tighten.
+  The plan is a versioned contract, so that tightening is a schema version bump rather than
+  a surprise.
 - The quickstart in the README is deliberately absent rather than aspirational. The two
   terminal images it does carry are real captures of a tool that does not do anything yet.
 - The plan rendering in the README is a specification of the artifact's shape, labelled as
