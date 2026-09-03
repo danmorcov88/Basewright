@@ -1,0 +1,11 @@
+---
+engine: malformed
+families:
+  debian:
+    packages:
+      - malformed-server-{{ version }}
+    service: malformed@{{ version }}-{{ instance }}
+  rhel:
+    packages:
+      - malformed-server-{{ version }}
+    service: malformed@{{ version }}-{{ instance }}

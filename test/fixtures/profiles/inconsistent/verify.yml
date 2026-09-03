@@ -1,0 +1,7 @@
+---
+engine: inconsistent
+checks:
+  - id: inconsistent.service.running
+    kind: service
+    title: The service unit is enabled and active
+    remediation: Read the unit's journal.

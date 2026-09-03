@@ -1,0 +1,8 @@
+---
+engine: inconsistent
+rules:
+  - id: inconsistent.mem.min_total
+    severity: block
+    title: Enough memory to run an instance at all
+    expr: host.memory.total_bytes >= 2 * GiB
+    remediation: Give the host at least 2 GiB of memory.

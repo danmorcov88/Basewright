@@ -1,0 +1,7 @@
+---
+engine: malformed
+checks:
+  - id: malformed.service.running
+    kind: service
+    title: The service unit is enabled and active
+    remediation: Read the unit's journal.

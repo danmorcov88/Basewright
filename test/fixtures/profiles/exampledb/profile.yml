@@ -1,0 +1,13 @@
+---
+# A profile for an engine that does not exist. It is here so the schema and the loader
+# can be exercised end to end without any real engine work, which belongs to Phase A.
+engine: exampledb
+display_name: ExampleDB
+profile_version: "1.0.0"
+summary: A fictional engine used to exercise the profile schema and the loader.
+os_families:
+  - debian
+  - rhel
+defaults:
+  port: 6432
+  instance: main

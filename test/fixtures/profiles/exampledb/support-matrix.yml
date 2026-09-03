@@ -1,0 +1,22 @@
+---
+engine: exampledb
+default_version: "3"
+versions:
+  - version: "3"
+    eol: "2029-05-01"
+    arch: [x86_64, aarch64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["22.04", "24.04"]
+      - family: rhel
+        distro: rocky
+        versions: ["9"]
+  - version: "2"
+    eol: "2027-05-01"
+    status: allowed_with_warning
+    arch: [x86_64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["22.04"]

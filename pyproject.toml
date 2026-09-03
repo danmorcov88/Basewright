@@ -49,6 +49,15 @@ Issues = "https://github.com/danmorcov88/Basewright/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["basewright"]
 
+# The schemas live at the repository root, where they are reviewed next to the profiles
+# they describe. They are copied into the wheel so that an installed Basewright validates
+# a profile without needing a checkout beside it.
+[tool.hatch.build.targets.wheel.force-include]
+"schema" = "basewright/_schema"
+
+[tool.hatch.build.targets.sdist]
+include = ["basewright", "profiles", "schema", "ansible", "test", "docs", "README.md", "LICENSE"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

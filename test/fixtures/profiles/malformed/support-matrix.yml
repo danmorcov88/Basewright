@@ -1,0 +1,11 @@
+---
+engine: malformed
+default_version: "3"
+versions:
+  - version: "3"
+    eol: "1 May 2029"
+    arch: [x86_64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["24.04"]

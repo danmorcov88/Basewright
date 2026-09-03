@@ -1,0 +1,11 @@
+---
+engine: malformed
+paths:
+  data:
+    default: /var/lib/basewright/{{ engine }}/{{ instance }}/data
+    mode: "0700"
+    min_free: 20GB
+service_account:
+  name: malformed
+  create_if_missing: true
+  shell: /usr/sbin/nologin

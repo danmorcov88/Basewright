@@ -1,0 +1,45 @@
+---
+engine: exampledb
+checks:
+  - id: exampledb.service.running
+    kind: service
+    title: The service unit is enabled and active
+    remediation: >-
+      Read the unit's journal. A service that will not start after a clean apply means the
+      plan promised a configuration the host cannot honour.
+  - id: exampledb.port.listening
+    kind: port
+    title: Listening on the planned address and port, and only there
+    remediation: >-
+      Check the listen address in the configuration file against the plan. Listening more
+      widely than planned is a finding, not a detail.
+  - id: exampledb.version.matches
+    kind: version
+    title: The reported server version matches the requested one
+    remediation: >-
+      The packages installed are not the ones the plan named. Compare the repository
+      configuration on the host with the one in the plan.
+  - id: exampledb.parameters.match
+    kind: parameters
+    title: Every parameter in the plan reads back with the planned value
+    remediation: >-
+      A parameter that does not read back was either overridden by another configuration
+      file or refused by the server. Both are worth knowing before the instance is used.
+  - id: exampledb.paths.match
+    kind: paths
+    title: Data and journal really live on the planned paths
+    remediation: >-
+      The instance is storing data somewhere the plan does not describe, so the plan is no
+      longer a description of this host.
+  - id: exampledb.backup.writable
+    kind: backup
+    title: The service account can write to the backup path
+    remediation: >-
+      Correct the ownership or the mode of the backup path. A backup path that cannot be
+      written to is discovered at the worst possible moment otherwise.
+  - id: exampledb.auth.no_trust
+    kind: auth
+    title: No password-free rule is reachable from a non-local address
+    remediation: >-
+      Remove the rule. An instance that trusts the network is not fit for production, and
+      this check exists because that mistake is easy to make and hard to notice.

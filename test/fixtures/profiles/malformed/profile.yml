@@ -1,0 +1,13 @@
+---
+# Deliberately invalid against the schema. Each defect below is one the loader has to name
+# precisely enough that a profile author can fix it without going and reading the schema.
+engine: malformed
+display_name: Malformed
+profile_version: "0.1.0"
+summary: One defect of each kind the schema catches, so the report can be read.
+os_families:
+  - debian
+  - rhel
+defaults:
+  port: 6432
+  instance: main

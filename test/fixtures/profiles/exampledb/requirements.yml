@@ -1,0 +1,27 @@
+---
+engine: exampledb
+rules:
+  - id: exampledb.mem.min_total
+    severity: block
+    title: Enough memory to run an instance at all
+    expr: host.memory.total_bytes >= 2 * GiB
+    remediation: >-
+      Give the host at least 2 GiB of memory, or provision this instance somewhere else.
+      Below this the engine starts and then fails under the first real workload, which is
+      a worse outcome than a refusal.
+  - id: exampledb.cpu.min_cores
+    severity: block
+    title: Enough cores for the background workers
+    expr: host.cpu.cores >= 2
+    remediation: >-
+      Give the host at least 2 cores. On a single core the background workers and the
+      foreground connections contend with each other constantly.
+  - id: exampledb.storage.rotational
+    severity: warn
+    title: Data directory on rotational storage
+    expr: not path.data.rotational
+    applies_to: path.data.rotational is not none
+    remediation: >-
+      Move the data path to solid state storage if the workload is latency sensitive.
+      Rotational storage is supported and will be sized for, but it is not the assumption
+      the default parameters are written against.
