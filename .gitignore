@@ -24,11 +24,6 @@ ansible/inventory/*.local
 # Molecule
 .molecule/
 
-# Local working notes and tool configuration, not part of the repository
-tasks/
-project brief.md
-CLAUDE.md
-
 # Runtime artifacts
 plans/
 *.plan.json
