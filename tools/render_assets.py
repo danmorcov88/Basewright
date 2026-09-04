@@ -511,6 +511,7 @@ FACTS_MODEL: tuple[tuple[str, str, str], ...] = (
     ("services", "what is already installed", "the conflict rule"),
     ("locales", "what the host can be asked for", "locale.present"),
     ("privileges", "the account, and whether it escalates", "host.privilege"),
+    ("reachable_repositories", "which package repositories answer", "repo.reachable"),
     ("time_sync", "the clock, and whether it is in step", "time.sync"),
     ("kernel", "swappiness, huge pages, overcommit", "os.thp, os.swappiness"),
     ("firewall", "whether it is on, and what it admits", "firewall.state"),
@@ -531,6 +532,8 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0002", "engines are data"),
             ("0008", "Python decides, Ansible acts"),
             ("0011", "packages, never source"),
+            ("0014", "rules are expressions"),
+            ("0015", "shared gates are code"),
         ),
     ),
     (
@@ -553,6 +556,38 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
 )
 
 
+#: Counted in words up to the point where a project has more decisions than a reader can
+#: hold in mind at once. Past that the number is the more useful of the two.
+_NUMBERS: tuple[str, ...] = (
+    "Zero",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+    "Twenty",
+)
+
+
+def _counted(total: int) -> str:
+    """How many, in the words a sentence would use. Derived, so it cannot go stale."""
+    return _NUMBERS[total] if total < len(_NUMBERS) else str(total)
+
+
 def render_decisions(theme: Theme) -> str:
     """The decision records, grouped by the question each one answers."""
     width = 980
@@ -567,7 +602,8 @@ def render_decisions(theme: Theme) -> str:
         text(
             left,
             30,
-            "Thirteen decisions, and the question each one answers",
+            f"{_counted(sum(len(entries) for _, entries in DECISIONS))} decisions, and the "
+            "question each one answers",
             fill=theme.fg,
             size=15,
             weight="600",
@@ -727,12 +763,22 @@ def build() -> dict[Path, str]:
 
     refused = "test/fixtures/profiles/malformed"
     facts = "test/fixtures/hosts/typical.json"
+    crowded = "test/fixtures/hosts/crowded.json"
+    profile = "test/fixtures/profiles/exampledb"
     captures: dict[str, tuple[str, list[str]]] = {
         "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
         "cli-plan": ("basewright plan", capture(["basewright.cli", "plan"])),
         "cli-gather": (
             "basewright gather",
             capture(["basewright.cli", "gather", "--facts", facts]),
+        ),
+        "preflight-refused": (
+            "a host that cannot be provisioned",
+            capture(["basewright.cli", "preflight", "--facts", crowded, "--profile", profile]),
+        ),
+        "preflight-passed": (
+            "a host that can, with warnings to acknowledge",
+            capture(["basewright.cli", "preflight", "--facts", facts, "--profile", profile]),
         ),
         "profile-refused": (
             "a profile that does not hold up",

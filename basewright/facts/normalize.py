@@ -264,6 +264,7 @@ def _build(document: Document) -> HostFacts:
         listening_ports=tuple(_listening(entry) for entry in network["listening_ports"]),
         services=tuple(_service(entry) for entry in document["services"]),
         locales=tuple(document["locales"]),
+        reachable_repositories=_reachable_repositories(document.get("reachable_repositories")),
         privileges=Privileges(
             user=document["privileges"]["user"],
             can_escalate=bool(document["privileges"]["can_escalate"]),
@@ -272,6 +273,16 @@ def _build(document: Document) -> HostFacts:
         kernel=_kernel(document.get("kernel")),
         firewall=_firewall(document.get("firewall")),
     )
+
+
+def _reachable_repositories(entries: list[str] | None) -> tuple[str, ...] | None:
+    """Which repositories answered, or None if nobody asked.
+
+    The two are not the same answer and must not collapse into one: an empty list is a
+    host that was asked and reached nothing, which refuses; None is a host that was never
+    asked, which is unanswered.
+    """
+    return None if entries is None else tuple(entries)
 
 
 def _mount(entry: Document) -> Mount:

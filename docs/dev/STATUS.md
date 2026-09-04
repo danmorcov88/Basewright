@@ -3,7 +3,7 @@
 What is actually merged, what is placeholder, and what is still missing. Kept accurate on
 purpose: an overstated status section is the fastest way to lose a technical reader.
 
-Last reviewed: 2026-09-03.
+Last reviewed: 2026-09-04.
 
 ## Phases
 
@@ -23,16 +23,20 @@ Last reviewed: 2026-09-03.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0013           | done        |
+| Architecture decision records 0001–0015           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
 | `gather`, from a facts document                   | done        |
 | `gather`, from a live host                        | Phase A     |
-| `preflight`, `plan` and `verify`                  | not started |
-| Gate engine and severity resolution               | not started |
+| `preflight`, from a facts document                | done        |
+| Expression language, and its interpreter          | done        |
+| Gate engine and severity resolution               | done        |
+| The twenty shared rules of the brief              | done        |
+| Refusal report, and the preflight contract        | done        |
+| `plan` and `verify`                               | not started |
 | Planner: sizing evaluation, layout, plan assembly | not started |
-| Report rendering, human and JSON                  | not started |
+| Report rendering for a plan, human and JSON       | not started |
 | Golden plan fixtures                              | not started |
 | Plan determinism check in CI                      | not started |
 
@@ -59,7 +63,9 @@ inherited.
 | Service account name, uid policy, shell  | placeholder                                   |
 | Locale and encoding for `initdb`         | placeholder                                   |
 | Default host-based authentication rules  | placeholder                                   |
-| Minimum cores, RAM and free space per path | placeholder — these become block thresholds |
+| Minimum cores, RAM and free space per path | placeholder — `minimums` in `requirements.yml`, and `min_free` per path |
+| Preferred filesystems, huge pages, swappiness | placeholder — `preferences` in `requirements.yml` |
+| What counts as a conflicting installation | placeholder — `conflicts` in `requirements.yml` |
 | OS families in the estate                | assumed: Debian/Ubuntu first, then RHEL/Rocky  |
 | Port convention                          | placeholder — engine default, single instance |
 
@@ -68,10 +74,20 @@ confirmed, they are documented as assumptions rather than presented as policy.
 
 ## Known gaps
 
-- `gather` reads a facts document. Collecting those facts from a live host runs over SSH
-  or WinRM, which is Ansible's half of the split and lands in Phase A. Until then the verb
-  says so rather than implying a machine was contacted. `preflight`, `plan` and `verify`
+- `gather` and `preflight` read a facts document. Collecting those facts from a live host
+  runs over SSH or WinRM, which is Ansible's half of the split and lands in Phase A. Until
+  then both verbs say so rather than implying a machine was contacted. `plan` and `verify`
   still exit 69 and point here.
+- **`repo.reachable` always skips today.** It reads `reachable_repositories`, a fact that
+  says which package repositories the host answered from. Which ones to try comes from the
+  profile, so it is the one fact whose collection depends on knowing what is being
+  provisioned, and it is collected by the gather playbook in Phase A. Absent means nobody
+  asked and the rule skips; present and empty means the host was asked and reached nothing,
+  which blocks. The rule is written, both outcomes are tested, and nothing about it changes
+  when the collector starts answering.
+- `host.reachable` checks that the facts describe the host the request names. That a
+  machine answered at all is settled by there being a document to read; what nobody notices
+  going wrong is a plan built from another machine's facts, so that is what the rule checks.
 - No engine profile exists. `profiles/` is empty, so the schema job in CI walks it and
   says so rather than passing quietly. What exercises the schema today is a fixture
   profile for a fictional engine, under `test/fixtures/profiles/`, which is deliberately
@@ -83,8 +99,9 @@ confirmed, they are documented as assumptions rather than presented as policy.
   reshaped alongside the fact model without a version bump, because bumping a contract
   with no second reader is ceremony. It freezes when `plan` produces its first artifact,
   and every change after that is a version.
-- The fact model is finished when every shared gate can be written against it. The gate
-  engine finds out, and anything missing shows up there rather than being guessed at now.
+- The fact model was built to be exactly what the shared gates need. Writing them found one
+  gap, `reachable_repositories`, which is now in the contract; everything else the twenty
+  rules ask for was already there.
 - Facts a blocking rule needs are required by the contract; the ones only a warning reads
   may be absent. A host that does not report them gets that warning skipped, which is a
   reportable outcome rather than a guess.

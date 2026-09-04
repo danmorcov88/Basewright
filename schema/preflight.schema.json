@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/preflight.schema.json",
+  "title": "Preflight outcome",
+  "description": "What the gate rules made of one host and one request. This is what the preflight verb writes when asked for the machine-readable answer, and it is the only artifact produced when a rule blocks -- a refusal is a first-class outcome, not the absence of a plan. When nothing blocks, the same results are carried into plan.json unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evaluated_at", "request", "summary", "results", "result"],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "The version of this contract. A consumer refuses a document whose major version it does not implement, rather than guessing at a field that moved."
+    },
+    "evaluated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC, to the second. One rule reads the calendar, so when a run happened is part of what it decided."
+    },
+    "tool_version": {
+      "type": "string",
+      "pattern": "^[0-9]+[.][0-9]+[.][0-9]+"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "version"],
+      "properties": {
+        "engine": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+[.][0-9]+[.][0-9]+$",
+          "description": "The profile version, not the engine version. A threshold that refused a host is traceable to the revision of the profile that set it."
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "engine", "version", "version_source", "environment", "instance", "port"],
+      "properties": {
+        "host": { "type": "string", "minLength": 1 },
+        "engine": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+        "version": { "type": "string", "pattern": "^[0-9][0-9A-Za-z._-]{0,15}$" },
+        "version_source": {
+          "enum": ["requested", "profile_default"],
+          "description": "Whether a human named the version or the profile default was used. Two rules read this, so the document says which it was."
+        },
+        "environment": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
+        "instance": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,30}$" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "warn", "block", "skip"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "block": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unlike the copy carried in a plan, this one may be greater than zero: a refusal is exactly the document that says so."
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rules that could not be evaluated, because the fact they read was not collected or because they did not apply to this host. Counted separately from a pass: a rule nobody could run is not a rule that agreed."
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/gate_result" },
+      "description": "Every rule that was evaluated, blocks first and then warnings, each group in identifier order. The order is fixed so that two runs of the same inputs produce the same document."
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicable", "warnings_require_acknowledgement"],
+      "properties": {
+        "applicable": {
+          "type": "boolean",
+          "description": "False when any rule blocked. There is no flag anywhere that makes a blocked host applicable."
+        },
+        "warnings_require_acknowledgement": {
+          "type": "boolean",
+          "description": "True when the run carries warnings. Apply refuses until they are acknowledged explicitly: a warning nobody has to answer for becomes invisible within a month."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gate_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "outcome", "title", "observed"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$"
+        },
+        "source": {
+          "enum": ["shared", "profile"],
+          "description": "Whether the rule applies to every engine or was contributed by this profile. It changes where someone goes to argue with it, and nothing else."
+        },
+        "severity": {
+          "enum": ["block", "warn"],
+          "description": "How badly the rule matters. There are two severities and there is no third, so a warning cannot be promoted into a refusal, and a refusal cannot be demoted at run time."
+        },
+        "outcome": {
+          "enum": ["pass", "warn", "block", "skip"],
+          "description": "What the rule did on this host. A rule of severity block that passes reports pass; one that could not be evaluated, or that did not apply, reports skip."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What was found, in numbers, and what was required. A refusal that does not carry both is one nobody can act on without going back to the host."
+        },
+        "remediation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What has to change on the host, or in the request, for the rule to pass. Present on every outcome that is not a pass."
+        }
+      }
+    }
+  }
+}

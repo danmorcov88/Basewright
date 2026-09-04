@@ -46,7 +46,7 @@
     "time_sync": { "service": "chrony", "synchronized": true }
   },
   "preflight": {
-    "summary": { "pass": 14, "warn": 1, "block": 0 },
+    "summary": { "pass": 14, "warn": 1, "block": 0, "skip": 2 },
     "results": [
       {
         "id": "exampledb.mem.min_total",

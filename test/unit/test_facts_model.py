@@ -230,7 +230,7 @@ def _plan_around(section: dict[str, object]) -> dict[str, object]:
             "instance": "main",
         },
         "host": section,
-        "preflight": {"summary": {"pass": 1, "warn": 0, "block": 0}, "results": []},
+        "preflight": {"summary": {"pass": 1, "warn": 0, "block": 0, "skip": 0}, "results": []},
         "parameters": [],
         "layout": {
             "paths": [

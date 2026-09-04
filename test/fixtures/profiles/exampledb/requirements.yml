@@ -1,21 +1,33 @@
 ---
 engine: exampledb
+minimums:
+  cores: 2
+  memory: 2GB
+preferences:
+  filesystems: [ext4, xfs]
+  transparent_hugepages: [madvise, never]
+  max_swappiness: 10
+conflicts:
+  - service: exampledb
+    match: prefix
+    description: an instance of this engine, from the vendor packages
 rules:
-  - id: exampledb.mem.min_total
+  - id: exampledb.port.unprivileged
     severity: block
-    title: Enough memory to run an instance at all
-    expr: host.memory.total_bytes >= 2 * GiB
+    title: A port the service account can bind without privilege
+    expr: request.port > 1024
     remediation: >-
-      Give the host at least 2 GiB of memory, or provision this instance somewhere else.
-      Below this the engine starts and then fails under the first real workload, which is
-      a worse outcome than a refusal.
-  - id: exampledb.cpu.min_cores
-    severity: block
-    title: Enough cores for the background workers
-    expr: host.cpu.cores >= 2
+      Choose a port above 1024. The service account this engine runs as is unprivileged
+      and cannot bind a reserved port, so an instance configured with one starts as root
+      or does not start at all.
+  - id: exampledb.memory.headroom
+    severity: warn
+    title: Memory free for the instance to grow into
+    expr: host.memory.available_bytes >= host.memory.total_bytes / 4
     remediation: >-
-      Give the host at least 2 cores. On a single core the background workers and the
-      foreground connections contend with each other constantly.
+      Free memory before provisioning, or size the instance for what is actually
+      available. A quarter of memory is what the default parameters assume they can take,
+      and taking it from a machine that has not got it means swapping.
   - id: exampledb.storage.rotational
     severity: warn
     title: Data directory on rotational storage

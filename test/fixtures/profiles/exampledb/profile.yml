@@ -11,3 +11,4 @@ os_families:
 defaults:
   port: 6432
   instance: main
+  locale: en_US.UTF-8

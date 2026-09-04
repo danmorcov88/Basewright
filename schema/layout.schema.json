@@ -44,6 +44,16 @@
           "$ref": "#/$defs/size",
           "description": "Free space the mount carrying this path must have. This is a block threshold, so it has to be a number someone will defend in a review."
         },
+        "prefer_separate_from": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,15}$"
+          },
+          "description": "The other purposes this path would rather not share a mount with, named as they are keyed here. Sharing is supported and only warns, because two paths on one filesystem compete for the same free space and the same queue, and lose each other's failure isolation."
+        },
         "description": {
           "type": "string",
           "minLength": 1,

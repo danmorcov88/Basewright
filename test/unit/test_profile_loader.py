@@ -88,8 +88,8 @@ def test_gates_carry_their_severity_and_their_way_out(profile: Profile) -> None:
     blocking = [gate for gate in profile.gates if gate.blocking]
     warning = [gate for gate in profile.gates if not gate.blocking]
 
-    assert len(blocking) == 2
-    assert len(warning) == 1
+    assert len(blocking) == 1
+    assert len(warning) == 2
     assert all(gate.remediation for gate in profile.gates)
     assert {gate.severity for gate in profile.gates} == {"block", "warn"}
 
@@ -347,3 +347,72 @@ def test_the_report_wraps_to_a_width_a_terminal_can_show() -> None:
     longest = max(len(line) for line in raised.value.report().splitlines())
 
     assert longest <= 88
+
+
+# ------------------------------------------------------ paths kept apart from each other
+
+
+def _with_layout(tmp_path: Path, replacement: str, into: str) -> Path:
+    """A copy of the fixture profile with one line of its layout changed."""
+    copied = tmp_path / "edited"
+    shutil.copytree(FIXTURES / "exampledb", copied)
+    layout = copied / "layout.yml"
+    layout.write_text(
+        layout.read_text(encoding="utf-8").replace(replacement, into, 1), encoding="utf-8"
+    )
+    return copied
+
+
+def test_a_path_may_not_prefer_to_be_separate_from_one_that_does_not_exist(
+    tmp_path: Path,
+) -> None:
+    """A purpose that is not there reads as a rule about storage and is no rule at all."""
+    edited = _with_layout(tmp_path, "prefer_separate_from: [data]", "prefer_separate_from: [dta]")
+    with pytest.raises(InvalidProfileError) as raised:
+        load_profile(edited)
+    problems = raised.value.problems
+    assert "layout.yml:paths.journal.prefer_separate_from[0]" in located(problems)
+    assert any("which this layout does not define" in problem.message for problem in problems)
+    assert all(problem.hint for problem in problems)
+
+
+def test_a_path_may_not_prefer_to_be_separate_from_itself(tmp_path: Path) -> None:
+    edited = _with_layout(
+        tmp_path, "prefer_separate_from: [data]", "prefer_separate_from: [journal]"
+    )
+    with pytest.raises(InvalidProfileError) as raised:
+        load_profile(edited)
+    assert any("which is the path itself" in problem.message for problem in raised.value.problems)
+
+
+def test_the_thresholds_a_shared_rule_reads_are_the_profiles(profile: Profile) -> None:
+    """Every number a shared gate compares against comes from here, not from the core."""
+    assert profile.minimums.cores == 2
+    assert profile.minimums.memory == "2GB"
+    assert profile.minimums.memory_bytes == 2_000_000_000
+    assert profile.preferences.max_swappiness == 10
+    assert profile.default_locale == "en_US.UTF-8"
+
+
+def test_a_profile_may_state_none_of_them(tmp_path: Path) -> None:
+    """They are all optional, and a rule with nothing to compare against skips."""
+    copied = tmp_path / "bare"
+    shutil.copytree(FIXTURES / "exampledb", copied)
+    requirements = copied / "requirements.yml"
+    requirements.write_text("---\nengine: exampledb\nrules: []\n", encoding="utf-8")
+
+    bare = load_profile(copied)
+    assert bare.minimums.cores is None
+    assert bare.minimums.memory is None
+    assert bare.preferences.filesystems == ()
+    assert bare.conflicts == ()
+    assert bare.gates == ()
+
+
+def test_a_conflict_matches_exactly_or_by_prefix(profile: Profile) -> None:
+    """The core recognises nothing on its own; what conflicts is what the profile said."""
+    assert profile.conflicting("exampledb") is not None
+    assert profile.conflicting("exampledb-3") is not None
+    assert profile.conflicting("exampledb@3-main") is not None
+    assert profile.conflicting("nginx") is None
+    assert profile.conflicting("notexampledb") is None

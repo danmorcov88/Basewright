@@ -21,9 +21,9 @@ from pathlib import Path
 #: message on the report off the right-hand edge.
 _LOCATION_WIDTH = (18, 22)
 
-#: Width the whole report is wrapped to. A refusal is read in a terminal and in a task
-#: log, and neither of them wraps kindly.
-_REPORT_WIDTH = 88
+#: Width every report this package renders is wrapped to. A refusal is read in a terminal
+#: and in a task log, and neither of them wraps kindly.
+REPORT_WIDTH = 88
 
 #: Indent of the remedy under its message. Fixed rather than aligned to the location
 #: column, so two reports side by side in one log still line up with each other.
@@ -88,10 +88,19 @@ def _column_width(problems: Sequence[Problem]) -> int:
     return min(max(longest, lower), upper)
 
 
+def wrapped(text: str, *, width: int) -> list[str]:
+    """Fold a run of prose to a width, collapsing whatever whitespace it arrived with.
+
+    Shared with the preflight rendering. Two reports that wrapped independently would
+    line up with each other until the day one of them was adjusted.
+    """
+    return textwrap.wrap(" ".join(text.split()), width=width)
+
+
 def _wrapped_hint(hint: str) -> list[str]:
     """Wrap a remedy under its message at a fixed indent."""
     if not hint:
         return []
     indent = " " * _HINT_INDENT
-    wrapped = textwrap.wrap(" ".join(hint.split()), width=_REPORT_WIDTH - _HINT_INDENT - 3)
-    return [f"{indent}{'->' if index == 0 else '  '} {line}" for index, line in enumerate(wrapped)]
+    lines = wrapped(hint, width=REPORT_WIDTH - _HINT_INDENT - 3)
+    return [f"{indent}{'->' if index == 0 else '  '} {line}" for index, line in enumerate(lines)]
