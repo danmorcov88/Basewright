@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://basewright.dev/schema/verify.schema.json",
   "title": "Post-install assertions",
-  "description": "What must be true of the running instance for it to match the plan that produced it. Apply promises something; these are what proves it. This is the least settled of the seven files: its consumer is the verify step, which is built in Phase A, and the schema is expected to gain detail there.",
+  "description": "What must be true of the running instance for it to match the plan that produced it. Apply promises something; these are what proves it. Every check names a kind, and a kind is a question the core knows how to put to an observation document without knowing which engine answered it.",
   "type": "object",
   "additionalProperties": false,
   "required": ["engine", "checks"],
@@ -39,9 +39,10 @@
             "log",
             "backup",
             "auth",
-            "account"
+            "account",
+            "initialization"
           ],
-          "description": "What the check reads back. The kinds are properties of a running database service in general, which is why the core can carry them without knowing which engine is running."
+          "description": "What the check reads back, and the whole of what a profile may ask for. Each kind is a property of a running database service in general, which is why the core can judge one without knowing which engine answered it, and the observation document fixes the shape of the answer per kind. Adding a kind is a change to this file and to the judgement that reads it, reviewed together, rather than something a profile can introduce on its own."
         },
         "title": {
           "type": "string",
@@ -51,7 +52,7 @@
         "expr": {
           "type": "string",
           "minLength": 1,
-          "description": "An expression over what was read back and what the plan promised. Absent means the kind is assertion enough on its own."
+          "description": "An expression over what was read back and what the plan promised, evaluated in addition to the kind's own judgement and required to be true. It is how a profile narrows a kind without the core learning anything about the engine: the port kind asks whether the instance is on the planned port, and a profile that also wants it off every non-loopback address says so here. Absent means the kind is assertion enough on its own."
         },
         "remediation": {
           "type": "string",
