@@ -11,7 +11,7 @@ on the merits, and supersede when the merits change.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/decisions-dark.svg">
-  <img alt="The eighteen decision records, grouped by the question each one answers"
+  <img alt="The nineteen decision records, grouped by the question each one answers"
        src="../assets/decisions-light.svg" width="980">
 </picture>
 
@@ -37,12 +37,13 @@ on the merits, and supersede when the merits change.
 | [0016](0016-plans-carry-canonical-values.md)          | A plan carries canonical values, not rendered ones                   |
 | [0017](0017-a-plan-is-named-by-its-content.md)        | A plan is named by its content                                       |
 | [0018](0018-what-apply-will-do-is-declared.md)        | What apply will do is declared, not inferred                         |
+| [0019](0019-exit-codes-are-the-contract.md)           | Exit codes are the contract with Semaphore                           |
 
 ## Reading order
 
 Three of them carry most of the weight, and the rest follow from them.
 
-**[0001](0001-plan-before-apply.md)** is why the tool has five verbs instead of one: the
+**[0001](0001-plan-before-apply.md)** is why the tool has five steps instead of one: the
 plan is a file, produced before anything is touched, and it is the product.
 **[0002](0002-engines-are-data.md)** is why adding an engine is a directory of YAML rather
 than a change to the planner. **[0008](0008-python-decides-ansible-acts.md)** is the line

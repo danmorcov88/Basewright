@@ -9,7 +9,7 @@ Last reviewed: 2026-09-04.
 
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
-| **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | in progress |
+| **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
 | **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | not started |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
@@ -41,7 +41,34 @@ Last reviewed: 2026-09-04.
 | Plan determinism check in CI                      | done        |
 | Report rendering for a plan, human and JSON       | done        |
 | Reading a plan back, and checking it is intact    | done        |
-| `verify`                                          | not started |
+| Exit codes, as a documented and tested set        | done        |
+| `verify`                                          | Phase A     |
+
+## Foundation closes with a verb that is not built
+
+`verify` reads a live instance and compares it to the plan it came from. Reaching a live
+instance runs over SSH or WinRM, which is Ansible's half of the split, so there was no
+version of this that could have been built in Foundation. It is listed as Phase A above
+rather than as not started, because nothing about it is undecided — §10 of the brief says
+what it checks, `verify.yml` is the profile file that carries the assertions, and what is
+missing is a machine to ask.
+
+It exists as a verb, it declares no flags, it exits `69`, and it names the page that says
+so. An unbuilt verb declaring flags no implementation will read would be the same class of
+claim as a screenshot of behaviour that does not exist, so its flags arrive with it.
+
+## Exit codes
+
+Four, closed, and documented in [ADR-0019](../adr/0019-exit-codes-are-the-contract.md):
+`0` yes, `2` no, `64` the request is malformed, `69` the verb is not built. They are a
+contract with Semaphore, which marks a task red on anything non-zero, so what the number
+carries is what to do next rather than that something failed.
+
+The set lives in `EXIT_CODES` in `basewright/cli.py`. The README table and the diagram are
+rendered from it, and `test/unit/test_cli.py` holds it in both directions: every code is
+reachable from a real invocation, and the CLI returns nothing outside the set. `69` is the
+one member with an expiry date, and it goes when `verify` lands — which narrows the set
+rather than changing it.
 
 ## Not yet wired into CI
 
@@ -78,8 +105,8 @@ confirmed, they are documented as assumptions rather than presented as policy.
 
 - `gather` and `preflight` read a facts document. Collecting those facts from a live host
   runs over SSH or WinRM, which is Ansible's half of the split and lands in Phase A. Until
-  then both verbs say so rather than implying a machine was contacted. `plan` and `verify`
-  still exit 69 and point here.
+  then both verbs say so rather than implying a machine was contacted. `verify` exits 69
+  and points here.
 - **`repo.reachable` always skips today.** It reads `reachable_repositories`, a fact that
   says which package repositories the host answered from. Which ones to try comes from the
   profile, so it is the one fact whose collection depends on knowing what is being
@@ -128,9 +155,25 @@ confirmed, they are documented as assumptions rather than presented as policy.
 - Facts a blocking rule needs are required by the contract; the ones only a warning reads
   may be absent. A host that does not report them gets that warning skipped, which is a
   reportable outcome rather than a guess.
-- The quickstart in the README is deliberately absent rather than aspirational. Every
-  terminal image it carries is a real capture, including the ones of verbs that do not
-  work yet.
+- **The quickstart in the README is not a quickstart, and says so in its first line.**
+  There is no engine to provision, so what it walks through is the three verbs that work,
+  against the fixtures under `test/`. Every terminal image it carries is a real capture,
+  including the one of the verb that does not work yet. Each command is shown as
+  copy-pasteable text above the picture it produced, and a test holds the two together, so
+  what a reader copies is what made the image. It becomes a quickstart when Phase A gives
+  it a host and a profile — not before, and it will not pretend otherwise in the meantime.
+
+- **`--profile` takes a path, and it is not going away.** `--engine NAME`, looking one up
+  under `profiles/`, is added when the first profile lands, and the two are mutually
+  exclusive. Naming a directory stays how a profile author runs an uncommitted profile and
+  how every fixture here is driven, so the change is additive and nobody has to plan around
+  a removal.
+
+- **Coverage has a floor of 95%.** Set at the number the suite actually reaches rather than
+  comfortably below it, so a change that leaves new code unexercised fails in the pull
+  request instead of in a review. The cost is real and is accepted: a refactor that deletes
+  well-tested code can trip it, and the answer to that is to bring the tests along, which is
+  the behaviour the floor exists to produce.
 - **The plan rendering in the README is a real capture.** The specification block that
   stood there from the first commit is gone. The rendering is produced by
   `plan --from`, against a golden plan whose moment is pinned, because a plan produced

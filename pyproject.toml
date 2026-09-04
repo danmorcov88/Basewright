@@ -92,3 +92,10 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
+
+# Set at the number the suite reaches rather than comfortably below it. A floor with slack
+# in it is a floor that gets used: new code lands unexercised, the total drifts down to the
+# threshold, and the threshold is what gets defended instead of the tests. The cost is that
+# a refactor deleting well-tested code can trip this, and the answer to that is to bring the
+# tests along -- which is the behaviour the floor exists to produce.
+fail_under = 95

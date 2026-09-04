@@ -38,6 +38,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from basewright.cli import EXIT_CODES
+
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
 
@@ -618,6 +620,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0005", "Semaphore is the interface"),
             ("0006", "one technical account"),
             ("0007", "secrets stay out of artifacts"),
+            ("0019", "exit codes are the contract"),
         ),
     ),
 )
@@ -778,6 +781,33 @@ def render_profile_anatomy(theme: Theme) -> str:
     )
 
 
+def render_exit_codes(theme: Theme) -> str:
+    """The exit codes, drawn from the registry the CLI actually returns.
+
+    This one is a contract with a second system rather than a description of this one, so
+    the picture is worth having: a template author reads it once and never has to read the
+    source. Rendered from ``EXIT_CODES`` so it cannot describe a set the tool does not have.
+    """
+    return render_table(
+        theme,
+        title="The four exit codes, and what a red task in Semaphore means",
+        subtitle=(
+            "Semaphore marks a task red on any non-zero code. What the number carries is "
+            "what to do next, not that something failed."
+        ),
+        headings=("CODE", "WHAT HAPPENED", "WHAT TO DO"),
+        rows=tuple((str(entry.code), entry.meaning, entry.response) for entry in EXIT_CODES),
+        footer=(
+            "The line between the two non-zero answers: a file that could not be read at "
+            "all is 64, a file that was read and is not acceptable is 2.",
+            "69 is temporary. It leaves when the verb it names is built, which narrows the "
+            "set rather than changing it.",
+        ),
+        columns=(20, 100, 420),
+        width=940,
+    )
+
+
 def render_plan_anatomy(theme: Theme) -> str:
     """What a plan carries, and which step reads each part of it."""
     return render_table(
@@ -900,24 +930,100 @@ def render_facts_model(theme: Theme) -> str:
 # ------------------------------------------------------------------- collection
 
 
-def capture(command: Sequence[str], *, display: str | None = None) -> list[str]:
-    """Run a command and keep what it printed, prompt line included.
+@dataclass(frozen=True)
+class Capture:
+    """One terminal image: what to run, and what the picture is called.
 
-    ``display`` is the prompt line to draw, for a command whose invocation here is not
-    what a reader would type. It changes what the picture says to type; it never changes
-    what was run, and what was run is what the picture shows.
+    Declared rather than run inline so that the command is inspectable. The README shows
+    each of these as a copy-pasteable line above the picture it produced, and a test holds
+    the two together -- so what a reader copies is provably what made the image below it.
     """
+
+    #: The stem of the files written under docs/assets/.
+    name: str
+    #: The caption drawn on the window.
+    title: str
+    #: The arguments after ``python -m``.
+    command: tuple[str, ...]
+    #: The prompt line to draw, when running it here is not what a reader would type. It
+    #: changes what the picture says to type; it never changes what was run, and what was
+    #: run is what the picture shows.
+    display: str | None = None
+
+    @property
+    def prompt(self) -> str:
+        """The command line the picture shows, and the one a reader copies."""
+        if self.display is not None:
+            return self.display
+        if self.command[0] == "basewright.cli":
+            return " ".join(("basewright", *self.command[1:]))
+        return " ".join(self.command)
+
+
+#: Every terminal image in the documentation. Each is produced by running the command and
+#: keeping what it printed, so none of them can show a verb working before it works.
+CAPTURES: tuple[Capture, ...] = (
+    Capture("cli-help", "basewright --help", ("basewright.cli", "--help")),
+    Capture(
+        "plan-rendered",
+        "the plan, as the person approving it reads it",
+        ("basewright.cli", "plan", "--from", "test/golden/plan/typical.json"),
+    ),
+    Capture(
+        "plan-edited",
+        "a plan whose name no longer matches what it says",
+        ("basewright.cli", "plan", "--from", "test/fixtures/plan/edited.json"),
+    ),
+    Capture(
+        "cli-gather",
+        "basewright gather",
+        ("basewright.cli", "gather", "--facts", "test/fixtures/hosts/typical.json"),
+    ),
+    Capture(
+        "preflight-refused",
+        "a host that cannot be provisioned",
+        (
+            "basewright.cli",
+            "preflight",
+            "--facts",
+            "test/fixtures/hosts/crowded.json",
+            "--profile",
+            "test/fixtures/profiles/exampledb",
+        ),
+    ),
+    Capture(
+        "preflight-passed",
+        "a host that can, with warnings to acknowledge",
+        (
+            "basewright.cli",
+            "preflight",
+            "--facts",
+            "test/fixtures/hosts/typical.json",
+            "--profile",
+            "test/fixtures/profiles/exampledb",
+        ),
+    ),
+    Capture("cli-verify", "a verb that is not built, saying so", ("basewright.cli", "verify")),
+    Capture(
+        "profile-refused",
+        "a profile that does not hold up",
+        ("basewright.profiles", "test/fixtures/profiles/malformed"),
+        display="python -m basewright.profiles test/fixtures/profiles/malformed",
+    ),
+)
+
+
+def run(entry: Capture) -> list[str]:
+    """Run a capture's command and keep what it printed, prompt line included."""
     result = subprocess.run(
-        [sys.executable, "-m", *command],
+        [sys.executable, "-m", *entry.command],
         capture_output=True,
         text=True,
         cwd=ROOT,
         check=False,
     )
     printed = (result.stdout + result.stderr).replace("\r\n", "\n").rstrip("\n")
-    shown = " ".join(command[1:]) if command[0] == "basewright.cli" else " ".join(command)
-    prompt = display if display is not None else f"basewright {shown}"
-    lines = [f"$ {prompt}"]
+    lines = [f"$ {entry.prompt}"]
     lines.extend(printed.split("\n") if printed else [])
     return [line_text.rstrip() for line_text in lines]
 
@@ -925,43 +1031,7 @@ def capture(command: Sequence[str], *, display: str | None = None) -> list[str]:
 def build() -> dict[Path, str]:
     """Render every asset. Keys are paths relative to the repository root."""
     assets: dict[Path, str] = {}
-
-    refused = "test/fixtures/profiles/malformed"
-    written = "test/golden/plan/typical.json"
-    edited = "test/fixtures/plan/edited.json"
-    facts = "test/fixtures/hosts/typical.json"
-    crowded = "test/fixtures/hosts/crowded.json"
-    profile = "test/fixtures/profiles/exampledb"
-    captures: dict[str, tuple[str, list[str]]] = {
-        "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
-        "plan-rendered": (
-            "the plan, as the person approving it reads it",
-            capture(["basewright.cli", "plan", "--from", written]),
-        ),
-        "plan-edited": (
-            "a plan whose name no longer matches what it says",
-            capture(["basewright.cli", "plan", "--from", edited]),
-        ),
-        "cli-gather": (
-            "basewright gather",
-            capture(["basewright.cli", "gather", "--facts", facts]),
-        ),
-        "preflight-refused": (
-            "a host that cannot be provisioned",
-            capture(["basewright.cli", "preflight", "--facts", crowded, "--profile", profile]),
-        ),
-        "preflight-passed": (
-            "a host that can, with warnings to acknowledge",
-            capture(["basewright.cli", "preflight", "--facts", facts, "--profile", profile]),
-        ),
-        "profile-refused": (
-            "a profile that does not hold up",
-            capture(
-                ["basewright.profiles", refused],
-                display=f"python -m basewright.profiles {refused}",
-            ),
-        ),
-    }
+    printed = {entry.name: run(entry) for entry in CAPTURES}
 
     for theme in THEMES:
         suffix = theme.name
@@ -973,8 +1043,11 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"facts-model-{suffix}.svg"] = render_facts_model(theme)
         assets[ASSETS / f"plan-anatomy-{suffix}.svg"] = render_plan_anatomy(theme)
         assets[ASSETS / f"sizing-journey-{suffix}.svg"] = render_sizing_journey(theme)
-        for name, (title, lines) in captures.items():
-            assets[ASSETS / f"{name}-{suffix}.svg"] = render_terminal(title, lines, theme)
+        assets[ASSETS / f"exit-codes-{suffix}.svg"] = render_exit_codes(theme)
+        for entry in CAPTURES:
+            assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
+                entry.title, printed[entry.name], theme
+            )
 
     return assets
 
