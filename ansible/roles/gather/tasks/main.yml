@@ -79,6 +79,35 @@
       read as an all-clear.
     success_msg: "{{ ansible_facts.services | length }} services enumerated"
 
+- name: Ask the host whether it can reach the repositories a profile names
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    timeout: "{{ gather_repository_timeout }}"
+  # Worked out here rather than kept in a fact, so that collecting twice in the same play
+  # cannot leave the second run probing what the first one was told to.
+  loop: >-
+    {{
+      gather_collected | basewright_document | basewright_repositories(
+        engine=gather_engine | default(none),
+        profile=gather_profile | default(none),
+        version=gather_engine_version | default(none),
+      ) if gather_asked | bool else []
+    }}
+  changed_when: false
+  # Not reaching a repository is an answer, and one a rule is written to receive. A task
+  # that failed here would end the run before the document carrying that answer had been
+  # written, which is the one outcome nobody could act on.
+  failed_when: false
+  register: gather_probes
+
+- name: Keep whatever each repository answered, and nothing at all when nobody asked
+  ansible.builtin.set_fact:
+    gather_probed: "{{ gather_probes.results | default([]) if gather_asked | bool else none }}"
+  # An empty list of answers is a host that reached nothing, which refuses. No list at all
+  # is a question nobody put, which skips. Set unconditionally so that neither answer can
+  # be inherited from an earlier collection in the same play.
+
 - name: Make somewhere for the document to land
   ansible.builtin.file:
     path: "{{ gather_output_dir }}"

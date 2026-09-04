@@ -16,6 +16,7 @@ them as it goes is a run whose plan no longer describes anything.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,25 @@ def path_components(path: str) -> tuple[str, ...]:
     does not.
     """
     return tuple(part for part in path.replace("\\", "/").split("/") if part)
+
+
+#: Everything glibc drops from a codeset when it stores one: ``UTF-8`` becomes ``utf8``,
+#: ``ISO-8859-1`` becomes ``iso88591``. Only the codeset, and only because the library
+#: does it -- the rest of a locale name is compared as written.
+_CODESET_NOISE = re.compile(r"[^a-z0-9]")
+
+
+def _canonical_locale(locale: str) -> str:
+    """One locale name, in the spelling glibc would list it under.
+
+    A modifier -- the ``@euro`` of ``de_DE.UTF-8@euro`` -- is kept as it is and kept
+    apart, because it selects a different locale rather than a different spelling of one.
+    """
+    head, at, modifier = locale.partition("@")
+    name, separator, codeset = head.partition(".")
+    if separator:
+        name = f"{name}.{_CODESET_NOISE.sub('', codeset.lower())}"
+    return f"{name}{at}{modifier}"
 
 
 @dataclass(frozen=True)
@@ -220,7 +240,20 @@ class HostFacts:
         )
 
     def locale_present(self, locale: str) -> bool:
-        return locale in self.locales
+        """Whether the host has a locale, compared the way the C library names them.
+
+        Not a loose match. ``locale -a`` prints the names glibc stores, and it normalizes
+        the codeset when it does: a locale generated as ``en_US.UTF-8`` is listed as
+        ``en_US.utf8``, on every Debian and Ubuntu host there is. Comparing the two
+        strings for equality refuses a machine that has exactly the locale that was asked
+        for, which is the worst failure available to a rule nobody can override.
+
+        So the codeset is compared in the spelling glibc reduces it to, and the language
+        and territory are compared as they are -- because ``en_US`` and ``en_GB`` are
+        different locales and nothing about them is a spelling variation.
+        """
+        wanted = _canonical_locale(locale)
+        return any(_canonical_locale(present) == wanted for present in self.locales)
 
     def service_named(self, name: str) -> InstalledService | None:
         return next((service for service in self.services if service.name == name), None)

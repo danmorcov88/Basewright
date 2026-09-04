@@ -1,0 +1,618 @@
+{
+  "arch": "x86_64",
+  "collected_at": "2026-09-04T10:13:02Z",
+  "cpu": {
+    "cores": 12,
+    "model": "12th Gen Intel(R) Core(TM) i5-12500",
+    "threads": 12
+  },
+  "host": "gather-ubuntu2404",
+  "kernel": {
+    "overcommit_memory": 1,
+    "swappiness": 60,
+    "transparent_hugepages": "always"
+  },
+  "locales": [
+    "C",
+    "C.utf8",
+    "POSIX",
+    "en_US.utf8"
+  ],
+  "memory": {
+    "available_bytes": 14923407360,
+    "swap_bytes": 4294967296,
+    "total_bytes": 16625172480
+  },
+  "mounts": [
+    {
+      "device": "/dev/sdd",
+      "filesystem": "ext4",
+      "free_bytes": 999964966912,
+      "options": [
+        "rw",
+        "relatime",
+        "bind"
+      ],
+      "path": "/etc/hostname",
+      "rotational": true,
+      "total_bytes": 1081101176832
+    },
+    {
+      "device": "/dev/sdd",
+      "filesystem": "ext4",
+      "free_bytes": 999964966912,
+      "options": [
+        "rw",
+        "relatime",
+        "bind"
+      ],
+      "path": "/etc/hosts",
+      "rotational": true,
+      "total_bytes": 1081101176832
+    },
+    {
+      "device": "/dev/sdd",
+      "filesystem": "ext4",
+      "free_bytes": 999964966912,
+      "options": [
+        "rw",
+        "relatime",
+        "bind"
+      ],
+      "path": "/etc/resolv.conf",
+      "rotational": true,
+      "total_bytes": 1081101176832
+    }
+  ],
+  "network": {
+    "listening_ports": []
+  },
+  "os": {
+    "codename": "noble",
+    "distro": "ubuntu",
+    "family": "debian",
+    "kernel": "5.15.167.4-microsoft-standard-WSL2",
+    "pretty_name": "Ubuntu 24.04.4 LTS",
+    "version": "24.04"
+  },
+  "privileges": {
+    "can_escalate": true,
+    "user": "root"
+  },
+  "reachable_repositories": [],
+  "schema_version": "1",
+  "services": [
+    {
+      "name": "apt-daily",
+      "state": "installed"
+    },
+    {
+      "name": "apt-daily-upgrade",
+      "state": "installed"
+    },
+    {
+      "name": "auditd",
+      "state": "stopped"
+    },
+    {
+      "name": "autovt@",
+      "state": "installed"
+    },
+    {
+      "name": "console-getty",
+      "state": "installed"
+    },
+    {
+      "name": "container-getty@",
+      "state": "installed"
+    },
+    {
+      "name": "cryptdisks",
+      "state": "installed"
+    },
+    {
+      "name": "cryptdisks-early",
+      "state": "installed"
+    },
+    {
+      "name": "dbus-org.freedesktop.hostname1",
+      "state": "installed"
+    },
+    {
+      "name": "dbus-org.freedesktop.locale1",
+      "state": "installed"
+    },
+    {
+      "name": "dbus-org.freedesktop.login1",
+      "state": "installed"
+    },
+    {
+      "name": "dbus-org.freedesktop.timedate1",
+      "state": "installed"
+    },
+    {
+      "name": "debug-shell",
+      "state": "installed"
+    },
+    {
+      "name": "display-manager",
+      "state": "stopped"
+    },
+    {
+      "name": "dpkg-db-backup",
+      "state": "installed"
+    },
+    {
+      "name": "e2scrub@",
+      "state": "installed"
+    },
+    {
+      "name": "e2scrub_all",
+      "state": "installed"
+    },
+    {
+      "name": "e2scrub_fail@",
+      "state": "installed"
+    },
+    {
+      "name": "e2scrub_reap",
+      "state": "installed"
+    },
+    {
+      "name": "emergency",
+      "state": "stopped"
+    },
+    {
+      "name": "fstrim",
+      "state": "installed"
+    },
+    {
+      "name": "getty-static",
+      "state": "installed"
+    },
+    {
+      "name": "getty@",
+      "state": "installed"
+    },
+    {
+      "name": "hwclock",
+      "state": "installed"
+    },
+    {
+      "name": "initrd-cleanup",
+      "state": "stopped"
+    },
+    {
+      "name": "initrd-parse-etc",
+      "state": "stopped"
+    },
+    {
+      "name": "initrd-switch-root",
+      "state": "stopped"
+    },
+    {
+      "name": "initrd-udevadm-cleanup-db",
+      "state": "stopped"
+    },
+    {
+      "name": "kmod",
+      "state": "installed"
+    },
+    {
+      "name": "kmod-static-nodes",
+      "state": "stopped"
+    },
+    {
+      "name": "ldconfig",
+      "state": "stopped"
+    },
+    {
+      "name": "modprobe@",
+      "state": "installed"
+    },
+    {
+      "name": "modprobe@configfs",
+      "state": "stopped"
+    },
+    {
+      "name": "modprobe@dm_mod",
+      "state": "stopped"
+    },
+    {
+      "name": "modprobe@fuse",
+      "state": "stopped"
+    },
+    {
+      "name": "modprobe@loop",
+      "state": "stopped"
+    },
+    {
+      "name": "motd-news",
+      "state": "installed"
+    },
+    {
+      "name": "pam_namespace",
+      "state": "installed"
+    },
+    {
+      "name": "plymouth-start",
+      "state": "stopped"
+    },
+    {
+      "name": "procps",
+      "state": "running"
+    },
+    {
+      "name": "quotaon",
+      "state": "installed"
+    },
+    {
+      "name": "rc-local",
+      "state": "installed"
+    },
+    {
+      "name": "rescue",
+      "state": "stopped"
+    },
+    {
+      "name": "serial-getty@",
+      "state": "installed"
+    },
+    {
+      "name": "sudo",
+      "state": "installed"
+    },
+    {
+      "name": "syslog",
+      "state": "stopped"
+    },
+    {
+      "name": "system-update-cleanup",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-ask-password-console",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-ask-password-wall",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-backlight@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-battery-check",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-binfmt",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-boot-check-no-failures",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-bsod",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-confext",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-exit",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-firstboot",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-fsck-root",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-fsck@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-fsckd",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-growfs-root",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-growfs@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-halt",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-hibernate",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-hibernate-resume",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-hostnamed",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-hybrid-sleep",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-initctl",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-journal-catalog-update",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-journal-flush",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-journald",
+      "state": "running"
+    },
+    {
+      "name": "systemd-journald@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-kexec",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-localed",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-logind",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-machine-id-commit",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-modules-load",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-network-generator",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-networkd",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-networkd-wait-online",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-networkd-wait-online@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrextend@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrfs-root",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrfs@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-file-system",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-firmware-code",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-firmware-config",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-machine-id",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-make-policy",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-secureboot-authority",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrlock-secureboot-policy",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pcrmachine",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-pcrphase",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-pcrphase-initrd",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-pcrphase-sysinit",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-poweroff",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-pstore",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-quotacheck",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-random-seed",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-reboot",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-remount-fs",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-repart",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-rfkill",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-soft-reboot",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-storagetm",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-suspend",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-suspend-then-hibernate",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-sysctl",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-sysext",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-sysext@",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-sysupdate",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-sysupdate-reboot",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-sysusers",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-time-wait-sync",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-timedated",
+      "state": "installed"
+    },
+    {
+      "name": "systemd-tmpfiles-clean",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-tmpfiles-setup",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-tmpfiles-setup-dev",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-tmpfiles-setup-dev-early",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-tpm2-setup",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-tpm2-setup-early",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-udev-settle",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-udev-trigger",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-udevd",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-update-done",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-update-utmp",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-update-utmp-runlevel",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-user-sessions",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-vconsole-setup",
+      "state": "stopped"
+    },
+    {
+      "name": "systemd-volatile-root",
+      "state": "installed"
+    },
+    {
+      "name": "user-runtime-dir@",
+      "state": "installed"
+    },
+    {
+      "name": "user@",
+      "state": "installed"
+    },
+    {
+      "name": "x11-common",
+      "state": "installed"
+    }
+  ]
+}

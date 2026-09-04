@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import base64
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 #: Bytes in a mebibyte. Ansible reports memory in whole mebibytes and the contract is
@@ -223,21 +223,72 @@ def ufw_firewall(output: str) -> dict[str, Any] | None:
     return {"service": "ufw", "active": state, "open_ports": sorted(set(ports))}
 
 
-def rotational_for(device: str, devices: Mapping[str, Mapping[str, Any]]) -> bool | None:
+def rotational_for(
+    device: str,
+    devices: Mapping[str, Mapping[str, Any]],
+    uuid: str | None = None,
+) -> bool | None:
     """Whether a mount's device spins, from ``ansible_facts.devices``.
 
-    Nothing gates on this. It is reported because a plan records what the machine was, and
-    which paths sit on spinning disks is the kind of thing somebody reads a three-month-old
-    plan to find out.
+    No gate reads this, and two sizing rules do -- and a sizing rule that reads an
+    unreported fact refuses the plan rather than guessing at it. So an answer this cannot
+    reach is a host that gets no plan, which makes the difference between the forms a
+    mount table writes a device in worth taking seriously.
+
+    A mount names whatever was mounted and the kernel describes what is underneath, and
+    the two rarely spell it the same way. Three things are tried, in the order they are
+    cheap:
+
+    * **The name, with any partition suffix removed.** ``/dev/sda1`` is a partition of the
+      disk ``sda``, and it is the disk that spins or does not.
+    * **The filesystem's own uuid**, against the ``/dev/disk/by-uuid`` links the kernel
+      reports for each device. This is what resolves everything else, because it does not
+      care how the mount was named: ``/dev/mapper/vg0-data``, ``/dev/vg0/data`` and
+      ``UUID=...`` in an fstab all arrive at the same device by it.
+
+    Device mapper deserves its own note, because it is the case this exists for. A
+    production estate runs on LVM, the mount says ``/dev/mapper/...``, and ``devices``
+    describes it as ``dm-0``. The kernel has already done the hard part: a mapped device
+    reports itself non-rotational only when everything underneath it is, so reading
+    ``dm-0`` is reading the answer for the disks beneath it rather than for an
+    abstraction. Descending to those disks by hand would re-derive, slightly worse, what
+    the block layer already worked out.
+
+    Where none of that resolves, the answer stays ``None``. Absent is not a guess.
     """
+    entry = _device_of(device, devices) or _device_by_uuid(uuid, devices)
+    if entry is None or "rotational" not in entry:
+        return None
+    return str(entry["rotational"]).strip() == "1"
+
+
+def _device_of(device: str, devices: Mapping[str, Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    """One device by the name a mount used, if the kernel describes it under that name."""
     if not device.startswith("/dev/"):
         return None
-
     name = device.removeprefix("/dev/")
     for candidate in (name, _PARTITION.sub("", name)):
         entry = devices.get(candidate)
-        if entry is not None and "rotational" in entry:
-            return str(entry["rotational"]).strip() == "1"
+        if entry is not None:
+            return entry
+    return None
+
+
+def _device_by_uuid(
+    uuid: str | None, devices: Mapping[str, Mapping[str, Any]]
+) -> Mapping[str, Any] | None:
+    """One device by the uuid of the filesystem on it.
+
+    ``N/A`` is what a mount reports when there is no uuid to report, and it is a string
+    like any other -- so it is excluded by name rather than left to match a device that
+    also has nothing.
+    """
+    if not uuid or uuid == "N/A":
+        return None
+    for entry in devices.values():
+        links = entry.get("links")
+        if isinstance(links, Mapping) and uuid in links.get("uuids", ()):
+            return entry
     return None
 
 
@@ -270,7 +321,7 @@ def mounts(
         options = [option for option in str(mount.get("options", "")).split(",") if option]
         if options:
             entry["options"] = options
-        spins = rotational_for(device, devices)
+        spins = rotational_for(device, devices, mount.get("uuid"))
         if spins is not None:
             entry["rotational"] = spins
         found.append(entry)
@@ -314,6 +365,28 @@ def _decoded(content: str) -> str:
     return base64.b64decode(content).decode("utf-8", errors="replace")
 
 
+def reached(probes: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The repositories the host got an answer from, out of what the probes came back with.
+
+    An HTTP status -- any HTTP status -- is proof that the host resolved the name, opened
+    a connection, completed the handshake and was answered. That is the whole of what the
+    rule reading this asks. Whether a repository that answered is also well formed is a
+    different question, and answering it would mean knowing how each family lays its
+    repositories out, which is knowledge this side of the split does not have.
+
+    A probe that never got that far reports no status of its own and is left out. Absent
+    from this list is a host that tried and failed, which is a refusal. That is a
+    different thing from the list not existing, which is nobody having asked.
+    """
+    answered: set[str] = set()
+    for probe in probes:
+        url = probe.get("item")
+        status = probe.get("status")
+        if isinstance(url, str) and isinstance(status, int) and status > 0:
+            answered.add(url)
+    return sorted(answered)
+
+
 def _without_none(values: Mapping[str, Any]) -> dict[str, Any]:
     """Drop what the host did not report, rather than writing it down as a null.
 
@@ -323,12 +396,20 @@ def _without_none(values: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-def document(collected: Mapping[str, Any]) -> dict[str, Any]:
+def document(
+    collected: Mapping[str, Any],
+    probes: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Everything a host reported, as the contract writes it down.
 
     One function rather than a template, so that assembling the document is covered by the
     same tests as parsing it. ``collected`` is what the role registered, handed over
     unchanged; every judgement about what any of it means happens here.
+
+    ``probes`` is the one input that is not the host talking about itself: what came back
+    when it was asked to reach the repositories a profile names. ``None`` means nobody
+    asked, and the field is left out entirely -- which is not the same document as one
+    saying the host reached nothing, and the rule reading it tells the two apart.
     """
     facts: Mapping[str, Any] = collected["facts"]
     escalation: Mapping[str, Any] = collected["escalation"]
@@ -381,6 +462,7 @@ def document(collected: Mapping[str, Any]) -> dict[str, Any]:
             "network": {"listening_ports": listening_ports(collected["sockets"])},
             "services": services(facts.get("services", {})),
             "locales": sorted(collected["locales"]),
+            "reachable_repositories": None if probes is None else reached(probes),
             "privileges": {
                 "user": facts["user_id"],
                 # Not whether the account is root, but whether it can become root here and
@@ -394,9 +476,3 @@ def document(collected: Mapping[str, Any]) -> dict[str, Any]:
             "firewall": ufw_firewall(collected["ufw"]),
         }
     )
-
-
-#: The filters the collecting role reaches this module through. One is enough, because the
-#: template's whole job is to write down what this returns; a role assembling the document
-#: field by field would be a second implementation of everything above.
-FILTERS: Mapping[str, Callable[..., Any]] = {"basewright_document": document}

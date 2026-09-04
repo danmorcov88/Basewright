@@ -35,10 +35,15 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from basewright.cli import EXIT_CODES
+from basewright.facts import HostFacts, load_facts
+from basewright.preflight import evaluate
+from basewright.profiles import load_profile
+from basewright.profiles.model import Profile
+from basewright.request import resolve_request
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
@@ -600,6 +605,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0002", "engines are data"),
             ("0008", "Python decides, Ansible acts"),
             ("0020", "the playbook is the entry point"),
+            ("0021", "the collector is told the engine"),
             ("0011", "packages, never source"),
             ("0014", "rules are expressions"),
             ("0015", "shared gates are code"),
@@ -792,6 +798,78 @@ VERB_PIPELINE: tuple[tuple[str, str, str], ...] = (
     ("facts.json", "what it said, in the frozen contract", "written on the control node"),
     ("basewright", "reads the document back, and reports", "no network, no host, no SSH"),
 )
+
+
+#: The one fact in the contract with three answers, and the case each of them is. Two of
+#: the rows are not about the fact at all: they are the two ways the rule decides it has
+#: nothing to decide, and they are here because "skip" appearing in a report means one of
+#: four different things and a reader is entitled to know which.
+#:
+#: The verdict column is not written here. It is produced by running the rule, below, so
+#: the picture cannot claim an outcome the gate does not reach.
+#: A repository that is not the one this profile declares. Any url will do; what the row
+#: it appears in is about is that it is not the same string.
+ELSEWHERE = "https://packages.elsewhere.invalid/apt"
+
+REACHABILITY: tuple[tuple[str, str, tuple[str, ...] | None], ...] = (
+    ("(no key)", "nobody named an engine, so the host was never asked", None),
+    ("[]", "the host was asked, and reached nothing at all", ()),
+    ('["the url"]', "the host reached the repository the profile names", ("url",)),
+    ('["another url"]', "the host reached something, but not that", ("other",)),
+    ("(no repository)", "the profile installs from what the host already has", ()),
+)
+
+
+def _reachability_rows() -> tuple[tuple[str, str, str], ...]:
+    """Run `repo.reachable` against each case, and report what it actually answered."""
+    profile = load_profile(ROOT / "test" / "fixtures" / "profiles" / "exampledb")
+    facts = load_facts(ROOT / "test" / "fixtures" / "hosts" / "typical.json")
+    packages = profile.packages_for(facts.os.family)
+    assert packages is not None and packages.repository is not None
+    declared = packages.repository.url
+    stripped = {name: replace(entry, repository=None) for name, entry in profile.packages.items()}
+    without = replace(profile, packages=stripped)
+
+    rows: list[tuple[str, str, str]] = []
+    for collected, meaning, reachable in REACHABILITY:
+        engine = without if collected == "(no repository)" else profile
+        urls = (
+            None
+            if reachable is None
+            else tuple(declared if name == "url" else ELSEWHERE for name in reachable)
+        )
+        outcome = _verdict(replace(facts, reachable_repositories=urls), engine)
+        rows.append((collected, meaning, outcome))
+    return tuple(rows)
+
+
+def _verdict(facts: HostFacts, profile: Profile) -> str:
+    """What the gate engine says about `repo.reachable` for one host."""
+    request = resolve_request(profile, host="a-host.invalid", environment="production")
+    result = evaluate(facts, profile, request)
+    entry = next(item for item in result.results if item.identifier == "repo.reachable")
+    return entry.outcome.value.upper()
+
+
+def render_reachability(theme: Theme) -> str:
+    """The three answers one fact gives, and the verdict each of them produces."""
+    return render_table(
+        theme,
+        title="reachable_repositories: the one fact in the contract with three answers",
+        subtitle=(
+            "Absent is not empty. Nobody having asked and the host having reached nothing "
+            "are different answers, and the rule tells them apart."
+        ),
+        headings=("WHAT WAS COLLECTED", "WHAT IT MEANS", "VERDICT"),
+        rows=_reachability_rows(),
+        footer=(
+            "Which repositories to try comes from the profile, so this is the one fact "
+            "whose collection depends on knowing what is being provisioned (ADR-0021).",
+            "Urls are compared exactly, never approximately: two spellings of one "
+            "repository are two different claims about what was proved.",
+        ),
+        columns=(20, 200, 700),
+    )
 
 
 def render_verb_pipeline(theme: Theme) -> str:
@@ -1055,6 +1133,18 @@ CAPTURES: tuple[Capture, ...] = (
         "a host the playbook actually went and read",
         ("basewright.cli", "gather", "--facts", "test/fixtures/hosts/collected.json"),
     ),
+    Capture(
+        "preflight-unreachable",
+        "a host that cannot reach the repository its packages come from",
+        (
+            "basewright.cli",
+            "preflight",
+            "--facts",
+            "test/fixtures/hosts/asked.json",
+            "--profile",
+            "test/fixtures/profiles/exampledb",
+        ),
+    ),
     Capture("cli-verify", "a verb that is not built, saying so", ("basewright.cli", "verify")),
     Capture(
         "profile-refused",
@@ -1097,6 +1187,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"sizing-journey-{suffix}.svg"] = render_sizing_journey(theme)
         assets[ASSETS / f"exit-codes-{suffix}.svg"] = render_exit_codes(theme)
         assets[ASSETS / f"verb-pipeline-{suffix}.svg"] = render_verb_pipeline(theme)
+        assets[ASSETS / f"reachability-{suffix}.svg"] = render_reachability(theme)
         for entry in CAPTURES:
             assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
                 entry.title, printed[entry.name], theme

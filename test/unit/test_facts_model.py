@@ -140,11 +140,27 @@ def test_a_port_is_only_taken_on_the_protocol_it_is_taken_on(typical: HostFacts)
     assert typical.port_in_use(22, "udp") is None
 
 
-def test_a_locale_is_looked_for_exactly(typical: HostFacts) -> None:
-    """An engine initialized with a locale the host does not have fails at the last moment."""
+def test_a_locale_is_looked_for_in_the_spelling_the_c_library_uses(typical: HostFacts) -> None:
+    """An engine initialized with a locale the host does not have fails at the last moment,
+    so this rule blocks and cannot be overridden -- which makes a false refusal here the
+    most expensive kind of wrong. `locale -a` normalizes the codeset when it prints, so a
+    locale generated as en_US.UTF-8 is listed as en_US.utf8 on every Debian and Ubuntu
+    host there is. Comparing the two strings refused a machine that had exactly what was
+    asked for, and a real container is what found it."""
     assert typical.locale_present("en_US.UTF-8")
-    assert not typical.locale_present("en_US.utf8")
+    assert typical.locale_present("en_US.utf8")
+    assert typical.locale_present("en_US.Utf-8")
     assert not host("small").locale_present("en_US.UTF-8")
+
+
+def test_a_locale_that_differs_by_more_than_spelling_is_a_different_locale(
+    typical: HostFacts,
+) -> None:
+    """Only the codeset is normalized, because only the codeset is what the library
+    rewrites. A territory is not a spelling variation."""
+    assert not typical.locale_present("en_GB.UTF-8")
+    assert not typical.locale_present("en_US.ISO-8859-1")
+    assert not typical.locale_present("en_US.UTF-8@euro")
 
 
 def test_an_installed_service_is_found_by_the_name_a_profile_would_use() -> None:

@@ -1,10 +1,30 @@
 ---
+# Twice, deliberately. The two runs differ by one thing -- whether anybody said what was
+# being provisioned -- and that one thing is the difference between a document that reports
+# which repositories the host reached and one that does not mention them at all. Both are
+# correct documents, and the rule reading them tells them apart (ADR-0021).
 - name: Converge
   hosts: all
   gather_facts: true
+
+  vars:
+    ephemeral: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+    project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+
   tasks:
     - name: Read what the host is, into a document beside this scenario
       ansible.builtin.include_role:
         name: gather
       vars:
-        gather_output_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"
+        gather_output_dir: "{{ ephemeral }}/facts"
+
+    - name: Read it again, this time saying what would be provisioned
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_output_dir: "{{ ephemeral }}/facts-repositories"
+        # A fictional engine whose repository is at a name reserved by RFC 2606 and so
+        # resolves nowhere, on any network, ever. That makes the refusing case free and
+        # deterministic: this scenario proves what happens to a host that was asked and
+        # reached nothing, and it proves it without the build depending on the internet.
+        gather_profile: "{{ project }}/test/fixtures/profiles/exampledb"
