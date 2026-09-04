@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import ast
 import json
+import re
+import shutil
 from pathlib import Path
 
 import pytest
 from _pytest.capture import CaptureFixture
 
-from basewright import __version__
+from basewright import __version__, cli
 from basewright.cli import VERBS, build_parser, main
 
 
@@ -245,3 +248,232 @@ def test_every_refusal_wraps_to_a_width_a_terminal_can_show(
 
     for line in capsys.readouterr().err.splitlines():
         assert len(line) <= 88
+
+
+# ------------------------------------------------------------------- producing a plan
+
+
+def plan_arguments(host: str = "typical", *extra: str) -> list[str]:
+    return ["plan", "--facts", str(FACTS / f"{host}.json"), "--profile", str(PROFILE), *extra]
+
+
+def test_plan_renders_the_artifact_for_a_host_that_passes(capsys: CaptureFixture[str]) -> None:
+    assert main(plan_arguments()) == 0
+    assert "BASEWRIGHT PLAN" in capsys.readouterr().out
+
+
+def test_plan_writes_the_artifact_when_asked(capsys: CaptureFixture[str]) -> None:
+    """--json is what apply reads, so it has to be the document and nothing else."""
+    assert main(plan_arguments("typical", "--json")) == 0
+    written = json.loads(capsys.readouterr().out)
+    assert written["schema_version"] == "1"
+    assert written["plan_id"]
+
+
+def test_a_blocked_host_produces_a_refusal_and_no_plan(capsys: CaptureFixture[str]) -> None:
+    """There is no partial plan and no flag that produces one."""
+    assert main(plan_arguments("crowded")) == 2
+    refused = capsys.readouterr()
+    assert refused.out == ""
+    assert "REFUSED" in refused.err
+    assert "BASEWRIGHT PLAN" not in refused.err
+
+
+def test_plan_refuses_a_version_the_profile_does_not_support(capsys: CaptureFixture[str]) -> None:
+    assert main(plan_arguments("typical", "--engine-version", "9")) == 2
+    assert "not a version this profile supports" in capsys.readouterr().err
+
+
+def test_plan_needs_both_facts_and_a_profile(capsys: CaptureFixture[str]) -> None:
+    assert main(["plan", "--facts", str(FACTS / "typical.json")]) == 64
+    assert "required" in capsys.readouterr().err
+
+
+def test_gather_needs_facts_and_says_why_it_cannot_collect_them(
+    capsys: CaptureFixture[str],
+) -> None:
+    assert main(["gather"]) == 64
+    refusal = capsys.readouterr().err
+    assert "--facts is required" in refusal
+    assert "not built yet" in refusal
+
+
+def test_gather_refuses_facts_that_do_not_hold_up(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    document = tmp_path / "facts.json"
+    document.write_text('{"schema_version": "1"}', encoding="utf-8")
+    assert main(["gather", "--facts", str(document)]) == 2
+    assert "is required but missing" in capsys.readouterr().err
+
+
+def test_gather_writes_the_document_when_asked(capsys: CaptureFixture[str]) -> None:
+    assert main(["gather", "--facts", str(FACTS / "typical.json"), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["os"]["family"] == "debian"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["gather"],
+        ["plan", "--facts", str(FACTS / "typical.json")],
+        ["preflight", "--profile", str(PROFILE)],
+    ],
+    ids=["gather", "plan", "preflight"],
+)
+def test_every_usage_refusal_wraps_the_way_every_report_does(
+    arguments: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """A refusal is read in a terminal, in a task log and in a documentation image, and
+    none of the three wraps kindly on its own."""
+    main(arguments)
+    printed = capsys.readouterr().err.splitlines()
+    assert printed
+    for line in printed:
+        assert len(line) <= 88
+
+
+# --------------------------------------------------------- the exit codes, as a set
+
+README = ROOT / "README.md"
+
+#: Every code, and one real invocation that produces it. Written out rather than derived,
+#: because a code nobody can reach from the command line is a code that does not exist,
+#: and only a real run proves otherwise.
+REACHABLE: tuple[tuple[int, list[str]], ...] = (
+    (0, ["plan", "--from", str(GOLDEN_PLAN)]),
+    (2, ["preflight", "--facts", str(FACTS / "crowded.json"), "--profile", str(PROFILE)]),
+    (64, ["plan", "--from", "nowhere.json"]),
+    (69, ["verify"]),
+)
+
+
+def test_the_exit_codes_are_a_closed_set() -> None:
+    """The constants and the registry are two views of one contract (ADR-0019)."""
+    constants = {
+        value
+        for name, value in vars(cli).items()
+        if name.startswith("EXIT_") and isinstance(value, int)
+    }
+    assert constants == {entry.code for entry in cli.EXIT_CODES}
+
+
+@pytest.mark.parametrize("code,arguments", REACHABLE, ids=lambda value: str(value)[:12])
+def test_every_documented_code_is_reachable(
+    code: int, arguments: list[str], capsys: CaptureFixture[str]
+) -> None:
+    assert main(arguments) == code
+    capsys.readouterr()
+
+
+def test_every_documented_code_is_covered_by_a_real_invocation() -> None:
+    """So that a code added to the registry cannot sit there unexercised."""
+    assert {code for code, _ in REACHABLE} == {entry.code for entry in cli.EXIT_CODES}
+
+
+def test_the_cli_returns_no_code_it_has_not_documented() -> None:
+    """A bare `return 2` would satisfy every test above and still be outside the set.
+
+    The registry is only a contract while every exit runs through a named constant, so
+    this reads the source and insists on it.
+    """
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    literals = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, int)
+    ]
+    assert not literals, f"cli.py returns an integer literal at lines {literals}"
+
+
+def test_the_readme_table_says_what_the_registry_says() -> None:
+    """The table an operator reads is the set the tool returns, or it is fiction."""
+    table = re.compile(r"^\| `(\d+)` \| (.+?) \| (.+?) \|$", re.MULTILINE)
+    rows = table.findall(README.read_text(encoding="utf-8"))
+    documented = [(int(code), meaning, response) for code, meaning, response in rows]
+    assert documented == [(e.code, e.meaning, e.response) for e in cli.EXIT_CODES]
+
+
+# ------------------------------------------------------- what a verb declares it reads
+
+
+def test_an_unbuilt_verb_declares_no_inputs() -> None:
+    """A flag no implementation will ever read is a promise --help cannot keep."""
+    for verb in cli.UNBUILT:
+        with pytest.raises(SystemExit):
+            build_parser().parse_args([verb, "--facts", "anything.json"])
+
+
+def test_the_verbs_that_are_built_all_read_facts() -> None:
+    """The other half of the check above: the flag is absent because verify never reads
+    a facts document, not because nothing does."""
+    for verb in set(VERBS) - set(cli.UNBUILT):
+        assert build_parser().parse_args([verb, "--facts", "anything.json"]).facts
+
+
+def test_only_the_verbs_that_take_a_request_take_a_profile() -> None:
+    assert build_parser().parse_args(["plan", "--profile", "somewhere"]).profile
+    assert build_parser().parse_args(["preflight", "--profile", "somewhere"]).profile
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["gather", "--profile", "somewhere"])
+
+
+# ------------------------------------------- a profile that loads and then does not work
+
+
+def broken_profile(tmp_path: Path, filename: str, misspelling: str) -> Path:
+    """A copy of the fixture profile with one expression made unreadable.
+
+    These are the failures a schema cannot catch. A profile whose files all validate can
+    still name a fact nothing reports, and the CLI's job at that point is to refuse with
+    the same exit code as any other refusal rather than to hand an operator a traceback.
+    """
+    directory = tmp_path / "broken"
+    shutil.copytree(PROFILE, directory)
+    document = directory / filename
+    document.write_text(
+        document.read_text(encoding="utf-8").replace("host.memory.total_bytes", misspelling, 1),
+        encoding="utf-8",
+    )
+    return directory
+
+
+def test_a_rule_that_cannot_be_evaluated_is_refused_not_raised(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    directory = broken_profile(tmp_path, "requirements.yml", "host.memroy.total_bytes")
+    arguments = ["--facts", str(FACTS / "typical.json"), "--profile", str(directory)]
+
+    assert main(["preflight", *arguments]) == 2
+    assert "not something this reads" in capsys.readouterr().err
+    assert main(["plan", *arguments]) == 2
+    assert "not something this reads" in capsys.readouterr().err
+
+
+def test_a_sizing_rule_that_reads_an_unreported_fact_produces_no_plan(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Not a defect in the profile and not a host that fell short: nobody can tell, so
+    there is no value to write down and no plan."""
+    directory = broken_profile(tmp_path, "sizing.yml", "host.memroy.total_bytes")
+    arguments = ["plan", "--facts", str(FACTS / "typical.json"), "--profile", str(directory)]
+
+    assert main(arguments) == 2
+    refused = capsys.readouterr()
+    assert refused.out == ""
+    assert "host.memroy.total_bytes" in refused.err
+
+
+def test_facts_that_do_not_hold_up_are_refused_by_every_verb_that_reads_them(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    document = tmp_path / "facts.json"
+    document.write_text('{"schema_version": "1"}', encoding="utf-8")
+    arguments = ["--facts", str(document), "--profile", str(PROFILE)]
+
+    assert main(["preflight", *arguments]) == 2
+    assert "is required but missing" in capsys.readouterr().err
+    assert main(["plan", *arguments]) == 2
+    assert "is required but missing" in capsys.readouterr().err

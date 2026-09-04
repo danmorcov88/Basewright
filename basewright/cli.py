@@ -5,6 +5,10 @@ renders whatever comes back. Every decision it appears to make is made under
 ``basewright/`` and is tested without a terminal.
 
 There is no ``apply`` verb here on purpose: this package decides, Ansible acts.
+
+What this module does own is the exit codes. They are a contract with Semaphore, which
+marks a task red on anything non-zero, and they are set out in ``EXIT_CODES`` below and
+in ADR-0019 rather than left as four constants nobody wrote down.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from basewright import __version__
@@ -38,12 +43,67 @@ from basewright.units import render_bytes
 
 #: Everything went as planned.
 EXIT_OK = 0
-#: A gate blocked, or verification found a mismatch. An expected, reportable outcome.
+#: A gate blocked, a document was read and is not acceptable, or verification found a
+#: mismatch. An expected, reportable outcome, and there is a report explaining it.
 EXIT_REFUSED = 2
-#: The request itself is malformed.
+#: The request itself is malformed, or an input could not be read at all.
 EXIT_USAGE = 64
 #: The verb exists but is not built yet. Removed as the roadmap closes.
 EXIT_UNIMPLEMENTED = 69
+
+
+@dataclass(frozen=True)
+class ExitCode:
+    """One exit code: what produced it, and what to do about it."""
+
+    #: The number the process exits with.
+    code: int
+    #: What happened, in the terms the person reading a task log thinks in.
+    meaning: str
+    #: What that person does next. This is the reason the code exists at all.
+    response: str
+
+
+#: The exit codes, as a set rather than four scattered constants (ADR-0019).
+#:
+#: Semaphore marks a task red on any non-zero code, so the number is not how a run is
+#: reported as failed -- the report already does that. What the number carries is what
+#: the person reading the red task is meant to do next, and there are four answers worth
+#: telling apart.
+#:
+#: One line inside that is worth stating out loud, because it is what decides between the
+#: two non-zero answers: **a file that could not be read at all is a usage error, and a
+#: file that was read and is not acceptable is a refusal.** A missing facts document is
+#: 64; one that fails its contract is 2. A plan whose id no longer matches its content is
+#: 2 as well -- it is a plan, it is simply not the plan it claims to be, and there is a
+#: report saying which.
+EXIT_CODES: tuple[ExitCode, ...] = (
+    ExitCode(
+        EXIT_OK,
+        "The tool ran, and the answer is yes.",
+        "Go on to the next step.",
+    ),
+    ExitCode(
+        EXIT_REFUSED,
+        "The tool ran, and the answer is no.",
+        "Read the report: it names the rule, what was found, and the way out.",
+    ),
+    ExitCode(
+        EXIT_USAGE,
+        "The request itself is malformed.",
+        "Fix the command. Nothing was decided, so there is no report to read.",
+    ),
+    ExitCode(
+        EXIT_UNIMPLEMENTED,
+        "The verb exists and is not built yet.",
+        "Nothing yet. docs/dev/STATUS.md says what is built.",
+    ),
+)
+
+#: The verbs that exist as an interface and are not built. Named here rather than in the
+#: two places that need it, so that a verb which starts working cannot go on declaring no
+#: inputs while still exiting 69.
+UNBUILT: frozenset[str] = frozenset({"verify"})
 
 VERBS: dict[str, str] = {
     "gather": "Read and normalize the facts a host reported. Changes nothing.",
@@ -58,8 +118,16 @@ VERBS: dict[str, str] = {
 _FACTS_HELP = "Path to a facts document. Collecting from a live host is not built yet."
 
 #: No profile ships in the repository yet, so the directory is named rather than looked up
-#: by engine. When profiles/ has members, --engine becomes the way this is usually spelled.
-_PROFILE_HELP = "Path to the profile directory for the engine being provisioned."
+#: by engine.
+#:
+#: This flag does not go away when one does. ``--engine NAME`` is added alongside it, as a
+#: lookup under ``profiles/``, and the two are mutually exclusive -- but naming a directory
+#: stays the way a profile author runs an uncommitted profile, and the way every fixture in
+#: this repository is driven. The change is additive, so nobody has to plan around it.
+_PROFILE_HELP = (
+    "Path to the profile directory for the engine being provisioned. "
+    "--engine, naming one under profiles/, is added when the first profile lands."
+)
 
 #: Reading a plan back is what makes it reviewable by somebody other than the person who
 #: produced it, which is the separation the whole artifact exists for. Retrieval by plan
@@ -86,18 +154,36 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="verb", metavar="VERB", required=True)
     for verb, help_text in VERBS.items():
         sub = subcommands.add_parser(verb, help=help_text, description=help_text)
-        sub.add_argument("--facts", metavar="PATH", type=Path, help=_FACTS_HELP)
-        if verb in {"preflight", "plan"}:
-            _add_request_arguments(sub)
-        if verb == "plan":
-            sub.add_argument("--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP)
-        sub.add_argument(
-            "--json",
-            dest="as_json",
-            action="store_true",
-            help="Emit the machine-readable artifact instead of the console rendering.",
-        )
+        _add_arguments(sub, verb)
     return parser
+
+
+def _add_arguments(parser: argparse.ArgumentParser, verb: str) -> None:
+    """Give a verb exactly the inputs it reads, and nothing it does not.
+
+    Built per verb rather than in one loop over all of them, because ``--help`` is a
+    published contract: it is captured into the documentation and an operator writes a
+    Semaphore template against it. A flag no implementation will ever read is a promise
+    the help page cannot keep.
+    """
+    if verb in UNBUILT:
+        # An unbuilt verb declares no inputs. Verify reads a plan and a live instance,
+        # and reaching a live instance runs over SSH or WinRM, which is Ansible's half
+        # of the split -- so its flags arrive with it rather than being guessed at now
+        # and lived with afterwards.
+        return
+
+    parser.add_argument("--facts", metavar="PATH", type=Path, help=_FACTS_HELP)
+    if verb in {"preflight", "plan"}:
+        _add_request_arguments(parser)
+    if verb == "plan":
+        parser.add_argument("--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP)
+    parser.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Emit the machine-readable artifact instead of the console rendering.",
+    )
 
 
 def _add_request_arguments(parser: argparse.ArgumentParser) -> None:
@@ -152,20 +238,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.verb == "plan":
         return plan(args)
 
-    print(
-        f"basewright {args.verb}: not built yet -- see docs/dev/STATUS.md for the roadmap.",
-        file=sys.stderr,
-    )
+    _refuse(f"basewright {args.verb}: not built yet -- see docs/dev/STATUS.md for the roadmap.")
     return EXIT_UNIMPLEMENTED
 
 
 def gather(facts: Path | None, *, as_json: bool) -> int:
     """Read a facts document, normalize it, and say what the host is."""
     if facts is None:
-        print(
+        _refuse(
             "basewright gather: --facts is required. Collecting from a live host runs over "
-            "SSH and is not built yet -- see docs/dev/STATUS.md.",
-            file=sys.stderr,
+            "SSH and is not built yet -- see docs/dev/STATUS.md."
         )
         return EXIT_USAGE
 
@@ -308,11 +390,10 @@ def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Re
     in the same words whichever of them was asked for.
     """
     if args.facts is None or args.profile is None:
-        print(
+        _refuse(
             f"basewright {verb}: --facts and --profile are both required. Collecting "
             "facts from a live host runs over SSH and is not built yet -- see "
-            "docs/dev/STATUS.md.",
-            file=sys.stderr,
+            "docs/dev/STATUS.md."
         )
         return EXIT_USAGE
 

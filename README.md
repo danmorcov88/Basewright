@@ -5,7 +5,7 @@
 [![CI](https://github.com/danmorcov88/Basewright/actions/workflows/ci.yml/badge.svg)](https://github.com/danmorcov88/Basewright/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
-[![Status](https://img.shields.io/badge/status-foundation-orange.svg)](docs/dev/STATUS.md)
+[![Status](https://img.shields.io/badge/status-foundation%20complete-blue.svg)](docs/dev/STATUS.md)
 
 [Why](#why-basewright) · [How it works](#how-it-works) · [The one rule](#the-one-rule) ·
 [Quickstart](#quickstart) · [Engines](#supported-engines) ·
@@ -78,6 +78,10 @@ reads each part:
 And here is one, rendered for the person who has to approve it. Every value carries the
 rule that produced it and the reasoning that rule ships with:
 
+```
+basewright plan --from test/golden/plan/typical.json
+```
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-rendered-dark.svg">
   <img alt="A rendered plan: request, host, preflight, parameters with their reasons, layout, changes, secrets and the verdict"
@@ -146,11 +150,22 @@ real value, from the rule that produced it to the line it occupies in a plan:
 
 ## Quickstart
 
-Partly. Every terminal image in this repository is produced by running the command and
-keeping what it printed, so this section shows exactly as much as works today and no more.
+**Not yet a quickstart, and it says so rather than pretending.** No engine profile ships in
+this repository — `profiles/` is empty until Phase A — so there is nothing here you can point
+at a server and provision. What follows is a walkthrough of the three verbs that work,
+against the fixtures committed under `test/`, which is as much as exists today.
+
+Every command below is copy-pasteable after `make install`, and every one of them is the
+command that produced the picture underneath it: `tools/render_assets.py` runs them to make
+the images, and a test holds the text in this file against the commands it ran. Neither can
+drift from the other.
 
 `gather` reads what a host reported and normalizes it into the model every rule is written
 against:
+
+```
+basewright gather --facts test/fixtures/hosts/typical.json
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-gather-dark.svg">
@@ -165,6 +180,10 @@ split and is not built yet.
 host. A refusal is a first-class outcome, so it is an answer rather than an error: it names
 the rule, what was found, what was required, and what would have to change.
 
+```
+basewright preflight --facts test/fixtures/hosts/crowded.json --profile test/fixtures/profiles/exampledb
+```
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/preflight-refused-dark.svg">
   <img alt="basewright preflight refusing a host, naming four blocking rules and what each one found"
@@ -173,6 +192,10 @@ the rule, what was found, what was required, and what would have to change.
 
 There is no flag that turns any of that into a plan. A host that passes still reports what
 it is not happy about, and those warnings are acknowledged before apply will run:
+
+```
+basewright preflight --facts test/fixtures/hosts/typical.json --profile test/fixtures/profiles/exampledb
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/preflight-passed-dark.svg">
@@ -188,15 +211,36 @@ A plan is named after a digest of its own content, which makes the name a checks
 as a name. `plan --from` reads one back — which is how the person who applies a plan can be
 somebody other than the person who produced it — and says so when the two no longer agree:
 
+```
+basewright plan --from test/fixtures/plan/edited.json
+```
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-edited-dark.svg">
   <img alt="basewright plan refusing a plan whose id no longer matches its content"
        src="docs/assets/plan-edited-light.svg" width="700">
 </picture>
 
-`apply` and `verify` are still a promise, and say so.
+`verify` is still a promise, and says so rather than hanging or pretending. It reads a live
+instance and compares it to the plan it came from, which needs a machine to reach — Ansible's
+half of the split, and Phase A:
 
-The five verbs exist as an interface already:
+```
+basewright verify
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-verify-dark.svg">
+  <img alt="basewright verify reporting that it is not built yet, and exiting 69"
+       src="docs/assets/cli-verify-light.svg" width="700">
+</picture>
+
+`apply` is not a verb of this CLI at all, and never will be: applying is Ansible's job, and
+the plan is the boundary between them. Four verbs exist as an interface already:
+
+```
+basewright --help
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-help-dark.svg">
@@ -208,6 +252,39 @@ This section fills in with the real console output of each step as the roadmap c
 cannot fall behind: `tools/render_assets.py --check` regenerates every image in CI and fails
 the build if what is committed differs by a single byte. Progress is tracked in
 [docs/dev/STATUS.md](docs/dev/STATUS.md).
+
+### What a run exits with
+
+Semaphore is the interface
+([ADR-0005](docs/adr/0005-semaphore-is-the-interface.md)), and its view of a run is one bit:
+the task is green or the task is red. So the exit code is not how a failure gets
+reported — the report already does that, in the task log. What the number carries is what
+the person looking at a red task is supposed to do next, and there are four answers worth
+telling apart:
+
+| Code | What happened | What to do |
+| ---- | ------------- | ---------- |
+| `0` | The tool ran, and the answer is yes. | Go on to the next step. |
+| `2` | The tool ran, and the answer is no. | Read the report: it names the rule, what was found, and the way out. |
+| `64` | The request itself is malformed. | Fix the command. Nothing was decided, so there is no report to read. |
+| `69` | The verb exists and is not built yet. | Nothing yet. docs/dev/STATUS.md says what is built. |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/exit-codes-dark.svg">
+  <img alt="The four exit codes, what produces each one, and what an operator does about it"
+       src="docs/assets/exit-codes-light.svg" width="940">
+</picture>
+
+The line between the two non-zero answers is where a document stopped being readable: **a
+file that could not be read at all is `64`, and a file that was read and is not acceptable
+is `2`.** A missing facts document is a mistyped path; one that fails its contract is a real
+answer about a real file. A plan whose id no longer matches its content is `2` for the same
+reason — it is a plan, it is simply not the plan it claims to be.
+
+A blocked gate, an unacceptable document and, when it lands, a verify mismatch are all `2`.
+They differ in what happened, not in what to do about it, and the difference between them
+lives in the report rather than in a number. The set is closed, held by a test in both
+directions, and argued in [ADR-0019](docs/adr/0019-exit-codes-are-the-contract.md).
 
 ### What a host is, to a rule
 
@@ -247,6 +324,10 @@ it documents.
 
 Checking a profile is one command, and it reports everything wrong at once — the file, the
 place inside it, and what to do about it:
+
+```
+python -m basewright.profiles test/fixtures/profiles/malformed
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/profile-refused-dark.svg">
@@ -331,13 +412,13 @@ committed — a stale picture fails the build the way a stale test does.
 
 ## Architecture decisions
 
-Thirteen decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+Nineteen decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
 it, what it costs, and the alternatives that were rejected. The four that shape everything
 else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The eighteen decision records, grouped by the question each one answers"
+  <img alt="The nineteen decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 
@@ -367,12 +448,25 @@ boundaries that keep the scope finishable —
 
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
-| **Foundation** | Schema, loader, fact model, gate engine, planner, CI        | in progress |
+| **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete   |
 | **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | not started |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, plan storage               | not started |
 | **Phase C**    | A second engine, proving the core needed no changes         | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
 | **Phase E**    | Audit trail, plan diff against a live host, signed releases | not started |
+
+Foundation is complete and it closes with `verify` unbuilt, which is worth stating plainly
+rather than leaving to be discovered. Verify reads a live instance, reaching a live instance
+runs over SSH, and that is Ansible's half of the split — so it could not have been built
+here. It exists as a verb, it exits `69`, and it says which page to read.
+
+Phase A is blocked on information rather than on code. Seven conventions have to come from
+the estate before a first engine profile can ship — path layout, service account, locale,
+authentication rules, the minimum resources a production instance may run on, the OS
+families actually in use, and the port convention. The minimums become block thresholds
+with no override, so they have to be numbers somebody will defend in a review. Until they
+arrive, `profiles/` stays empty and the schema job in CI says so out loud instead of passing
+quietly over an empty directory.
 
 Detail, and the placeholder values that still need real numbers from the estate, are in
 [docs/dev/STATUS.md](docs/dev/STATUS.md).
