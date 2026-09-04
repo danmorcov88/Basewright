@@ -66,8 +66,11 @@ person, committed to Git, attached to a change request, and diffed against the p
 three months ago. A provisioning tool where the reasoning lives only in the operator's head
 is the thing being replaced.
 
-The artifact exists and its contract is frozen. Here is what it carries, and which step
-reads each part:
+The artifact exists and its contract is frozen. A change to it is a version rather than a
+patch, and it is now at version two: writing `apply` against the plan alone found the one
+thing it did not carry, which was how the instance gets created
+([ADR-0022](docs/adr/0022-the-plan-says-how-the-instance-is-created.md)). Here is what it
+carries, and which step reads each part:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-anatomy-dark.svg">
@@ -84,7 +87,7 @@ basewright plan --from test/golden/postgresql/plan/typical.json
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-rendered-dark.svg">
-  <img alt="A rendered plan: request, host, preflight, parameters with their reasons, layout, changes, secrets and the verdict"
+  <img alt="A rendered plan: request, host, preflight, parameters with their reasons, layout, initialization, changes, secrets and the verdict"
        src="docs/assets/plan-rendered-light.svg" width="900">
 </picture>
 
@@ -504,13 +507,13 @@ committed — a stale picture fails the build the way a stale test does.
 
 ## Architecture decisions
 
-Twenty-one decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+Twenty-two decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
 it, what it costs, and the alternatives that were rejected. The four that shape everything
 else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The twenty-one decision records, grouped by the question each one answers"
+  <img alt="The twenty-two decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 

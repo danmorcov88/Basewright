@@ -508,7 +508,7 @@ PROFILE_ANATOMY: tuple[tuple[str, str, str], ...] = (
     ("layout.yml", "paths, modes, the service account", "plan, apply"),
     ("sizing.yml", "parameter rules, each with its reason", "plan"),
     ("packages.yml", "repositories, packages, service unit", "apply"),
-    ("apply.yml", "config files, host settings, secrets", "plan, apply"),
+    ("apply.yml", "config files, creation, settings, secrets", "plan, apply"),
     ("verify.yml", "assertions about the running instance", "verify"),
 )
 
@@ -547,6 +547,7 @@ PLAN_ANATOMY: tuple[tuple[str, str, str], ...] = (
     ("parameters", "each value, with its rule and reason", "apply, verify"),
     ("layout", "paths, modes, owner, and the mount", "apply, verify"),
     ("packages", "repository, package names, service", "apply, verify"),
+    ("initialization", "what creating it takes, done once", "apply, and only the first time"),
     ("configuration", "template, destination, mode, owner", "apply"),
     ("tunables", "host settings, and what they are now", "apply"),
     ("changes", "everything apply would do, in order", "the person who approves it"),
@@ -610,6 +611,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0014", "rules are expressions"),
             ("0015", "shared gates are code"),
             ("0018", "what apply does is declared"),
+            ("0022", "the plan says how it is created"),
         ),
     ),
     (
@@ -935,6 +937,8 @@ def render_plan_anatomy(theme: Theme) -> str:
         footer=(
             "The contract is closed and frozen. An unknown key is an error, and a change to "
             "any field here is a version of the contract rather than a patch.",
+            "Every section but initialization is required. An engine whose packages leave a "
+            "running instance behind them has nothing to create, and carries none.",
             "The id is a digest of everything above except generated_at, so two runs that "
             "decided the same thing produce the same name for it.",
         ),

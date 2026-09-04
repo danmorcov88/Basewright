@@ -204,6 +204,33 @@ class ConfigurationFile:
 
 
 @dataclass(frozen=True)
+class InitializationSetting:
+    """One choice made while the instance is created.
+
+    There is no ``observed`` beside the value, unlike a host setting: nothing exists yet
+    to have observed. That is the whole difference between this and a tunable, and it is
+    the reason they are two things rather than one with a field left empty.
+    """
+
+    name: str
+    value: str | float | bool
+    why: str
+
+
+@dataclass(frozen=True)
+class Initialization:
+    """What creating the instance takes, for an engine that installs a server empty.
+
+    The core reads none of the settings. It carries the name, the value and the reasoning
+    into the plan, and the engine's own role knows what each one is a flag for -- which is
+    the only arrangement under which the core can describe an act it does not understand.
+    """
+
+    description: str
+    settings: tuple[InitializationSetting, ...]
+
+
+@dataclass(frozen=True)
 class Tunable:
     """A host setting the instance needs changed, and what it is now.
 
@@ -269,6 +296,7 @@ class Profile:
     tunables: tuple[Tunable, ...]
     secrets: tuple[Secret, ...]
     checks: tuple[VerifyCheck, ...]
+    initialization: Initialization | None = None
     default_locale: str | None = None
     documentation: str | None = None
 

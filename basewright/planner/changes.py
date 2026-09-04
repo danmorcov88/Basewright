@@ -42,6 +42,7 @@ class Actions:
 
     packages: dict[str, Any]
     configuration: tuple[dict[str, Any], ...]
+    initialization: dict[str, Any] | None
     tunables: tuple[dict[str, Any], ...]
     secrets: tuple[dict[str, Any], ...]
     changes: tuple[dict[str, Any], ...]
@@ -79,6 +80,7 @@ def plan_actions(
         for entry in profile.configuration
     )
 
+    initialization = _initialization(profile)
     tunables = tuple(_tunable(tunable, scope) for tunable in profile.tunables)
 
     secrets = tuple(
@@ -93,6 +95,7 @@ def plan_actions(
     return Actions(
         packages=_packages_section(packages, values, installed, service),
         configuration=configuration,
+        initialization=initialization,
         tunables=tunables,
         secrets=secrets,
         changes=_changes(
@@ -103,6 +106,7 @@ def plan_actions(
             account_name=owner,
             create_account=account.create_if_missing,
             paths=paths,
+            initialization=initialization,
             configuration=configuration,
             tunables=tunables,
             parameters=parameters,
@@ -173,6 +177,27 @@ def _packages_section(
     return section
 
 
+def _initialization(profile: Profile) -> dict[str, Any] | None:
+    """What creating the instance takes, or nothing for an engine that needs no creating.
+
+    The locale comes from the profile's defaults rather than from this section, because a
+    shared rule already blocks a host that has not got it and two spellings of one locale
+    is two things to keep in step. Everything else is carried through untouched: the core
+    does not know what any of these names mean and does not need to.
+    """
+    if profile.initialization is None:
+        return None
+
+    section: dict[str, Any] = {"description": profile.initialization.description}
+    if profile.default_locale is not None:
+        section["locale"] = profile.default_locale
+    section["settings"] = [
+        {"name": setting.name, "value": setting.value, "why": setting.why}
+        for setting in profile.initialization.settings
+    ]
+    return section
+
+
 def _tunable(tunable: Tunable, scope: Mapping[str, Any]) -> dict[str, Any]:
     """One host setting, what it will be, and what it is now if the host said.
 
@@ -211,6 +236,7 @@ def _changes(
     account_name: str,
     create_account: bool,
     paths: Mapping[str, PlannedPath],
+    initialization: Mapping[str, Any] | None,
     configuration: Sequence[Mapping[str, Any]],
     tunables: Sequence[Mapping[str, Any]],
     parameters: Sequence[Sized],
@@ -229,6 +255,9 @@ def _changes(
         changes.append(_add(f"create service account {account_name}, unless it already exists"))
 
     changes.append(_add(f"create {_counted(len(paths), 'directory', 'directories')}"))
+
+    if initialization is not None:
+        changes.append(_add(f"initialize the instance ({_settings_of(initialization)})"))
 
     for entry in configuration:
         detail = ""
@@ -265,6 +294,25 @@ def _tunable_change(tunable: Mapping[str, Any]) -> list[dict[str, Any]]:
             "to": wanted,
         }
     ]
+
+
+def _settings_of(initialization: Mapping[str, Any]) -> str:
+    """The choices creating the instance is made with, spelled out rather than counted.
+
+    A configuration file's change says how many parameters it carries, because nobody
+    reviews twenty-three of them in a list of changes. These are three or four, they
+    cannot be changed afterwards, and they are exactly what somebody approving a plan is
+    reading this line to find out.
+    """
+    chosen = [
+        f"{name}={_rendered(initialization[name])}"
+        for name in ("locale",)
+        if name in initialization
+    ]
+    chosen.extend(
+        f"{setting['name']}={_rendered(setting['value'])}" for setting in initialization["settings"]
+    )
+    return ", ".join(chosen)
 
 
 def _add(description: str) -> dict[str, Any]:

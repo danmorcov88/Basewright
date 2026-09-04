@@ -26,6 +26,45 @@ configuration:
       Which connections are accepted and how they prove who they are. Written rather than
       added to, because access is not something to leave inherited.
 
+# The packages install a server and no cluster, which is the Debian packaging working as
+# intended: one package set can carry any number of clusters. Creating one is therefore a
+# step of its own, and it is the only step apply performs that cannot be performed again
+# differently -- everything below is fixed for the life of the instance, and changing any
+# of it afterwards means a dump and a reload of every database in the cluster.
+#
+# The locale is not repeated here. It is declared once, in profile.yml, because a shared
+# rule blocks a host that has not generated it and a second spelling of it would be a
+# second thing to keep in step.
+initialization:
+  description: >-
+    Create the cluster in the data directory the plan names, on the planned port, with the
+    locale this host was already checked for. None of it can be changed afterwards without
+    dumping and reloading every database in it.
+  settings:
+    - name: encoding
+      value: UTF8
+      why: >-
+        The only encoding worth choosing in 2026, and the one every client library assumes
+        unless told otherwise. A cluster created in a single-byte encoding is a cluster
+        that corrupts the first name somebody types an accent into, and the repair is a
+        dump and a reload.
+
+    - name: data_checksums
+      value: true
+      why: >-
+        Silent corruption on the storage underneath is otherwise found by reading a wrong
+        answer out of a query. Checksums turn that into an error at the moment the page is
+        read, which is the difference between a restore and an investigation. They cost a
+        few percent of throughput and they cannot be turned on afterwards without taking
+        the cluster down.
+
+    - name: start_conf
+      value: auto
+      why: >-
+        The Debian packaging keeps a per-cluster start policy, and the default for a
+        cluster created by hand is not the one a provisioned instance wants: an instance
+        that does not come back after a reboot is discovered by the reboot.
+
 tunables:
   - name: vm.swappiness
     value: 10

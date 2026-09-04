@@ -56,12 +56,27 @@ def test_every_file_the_diagram_draws_says_who_reads_it() -> None:
 
 def test_the_diagram_lists_every_section_a_plan_carries() -> None:
     """This contract is frozen, so a picture that describes a different one is worse
-    here than anywhere else in the documentation."""
+    here than anywhere else in the documentation.
+
+    Every section a plan can carry is drawn, not only the ones it must: a reader working
+    out whether apply has what it needs is reading this for the whole list. What the two
+    assertions keep apart is that every drawn section exists, and that the required ones
+    are drawn in the order the schema states them."""
     schema = json.loads((schema_directory() / "plan.schema.json").read_text(encoding="utf-8"))
     drawn = [name for name, _, _ in PLAN_ANATOMY]
 
-    assert drawn == schema["required"]
     assert set(drawn) == set(schema["properties"])
+    assert [name for name in drawn if name in schema["required"]] == schema["required"]
+
+
+def test_a_section_the_schema_does_not_require_is_one_a_profile_may_omit() -> None:
+    """The only optional section is initialization, and it is optional because an engine
+    whose packages leave a running instance behind them has nothing to create. A second
+    optional section arriving without anybody deciding it should be is what this catches."""
+    schema = json.loads((schema_directory() / "plan.schema.json").read_text(encoding="utf-8"))
+    optional = set(schema["properties"]) - set(schema["required"])
+
+    assert optional == {"initialization"}
 
 
 def test_every_section_the_diagram_draws_says_who_reads_it() -> None:

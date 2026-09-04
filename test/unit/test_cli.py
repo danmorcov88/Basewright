@@ -13,6 +13,7 @@ from _pytest.capture import CaptureFixture
 
 from basewright import __version__, cli
 from basewright.cli import VERBS, build_parser, main
+from basewright.planner.plan import SCHEMA_VERSION
 
 
 def test_version_is_reported() -> None:
@@ -178,7 +179,11 @@ def test_a_plan_can_be_read_back_and_rendered(capsys: pytest.CaptureFixture[str]
     printed = capsys.readouterr().out
     assert code == 0
     assert "BASEWRIGHT PLAN" in printed
-    assert "d6cb9a5adc52" in printed
+    # Read out of the golden rather than written down here. What this asserts is that the
+    # rendering carries the plan's own name; the name itself is pinned by the golden being
+    # committed, and a copy of it in a test is a second thing to update every time the
+    # contract gains a field.
+    assert json.loads(GOLDEN_PLAN.read_text(encoding="utf-8"))["plan_id"] in printed
 
 
 def test_a_plan_that_has_been_edited_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
@@ -266,7 +271,7 @@ def test_plan_writes_the_artifact_when_asked(capsys: CaptureFixture[str]) -> Non
     """--json is what apply reads, so it has to be the document and nothing else."""
     assert main(plan_arguments("typical", "--json")) == 0
     written = json.loads(capsys.readouterr().out)
-    assert written["schema_version"] == "1"
+    assert written["schema_version"] == SCHEMA_VERSION
     assert written["plan_id"]
 
 

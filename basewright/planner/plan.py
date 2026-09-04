@@ -53,7 +53,13 @@ _OUTSIDE_THE_DIGEST = ("plan_id", "generated_at")
 
 #: The version of the plan contract. Apply refuses a plan whose major version it does not
 #: implement, rather than guessing at a field that moved.
-SCHEMA_VERSION = "1"
+#:
+#: Two, since the contract gained an `initialization` section. The first version described
+#: everything apply executes except creating the instance -- which is the one act on the
+#: list that cannot be performed again differently, and which was therefore the worst
+#: thing to have left implicit. A version rather than a patch, because a plan written
+#: under the old contract does not carry it and apply must say so rather than default it.
+SCHEMA_VERSION = "2"
 
 #: How much of the digest the plan is known by. Long enough that two plans in one estate
 #: will not collide, short enough to be read out loud from a task log.
@@ -99,6 +105,7 @@ def build_plan(
         "parameters": [parameter.document() for parameter in parameters],
         "layout": _layout(facts, profile, paths),
         "packages": actions.packages,
+        **({} if actions.initialization is None else {"initialization": actions.initialization}),
         "configuration": list(actions.configuration),
         "tunables": list(actions.tunables),
         "changes": list(actions.changes),

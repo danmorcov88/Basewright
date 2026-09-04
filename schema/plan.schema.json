@@ -25,7 +25,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1",
+      "const": "2",
       "description": "The version of this contract. Apply refuses a plan whose major version it does not implement, rather than guessing at a field that moved."
     },
     "plan_id": {
@@ -69,6 +69,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/configuration_file" },
       "description": "Every configuration file apply renders, and where each one lands. Apply reads this rather than the profile, because a plan that does not carry a value apply needs is an incomplete plan."
+    },
+    "initialization": {
+      "$ref": "#/$defs/initialization",
+      "description": "What creating the instance takes, for an engine whose packages install a server without making one. Absent means installing is all there is to it. This is the one thing apply does that cannot be done again differently, so the plan states it rather than leaving it to a default inside a role: a locale or an encoding chosen here is chosen for the life of the instance, and changing either afterwards means a dump and a reload."
     },
     "tunables": {
       "type": "array",
@@ -324,6 +328,42 @@
           "description": "Whether the sized parameters are written into this file. At most one file may say so, because two would leave nothing to say which one the instance reads them from."
         },
         "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "initialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "settings"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 10
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The locale the instance is created with, which a shared rule has already proved the host has. Absent means the profile initializes without naming one."
+        },
+        "settings": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/initialization_setting" },
+          "description": "Every other choice made while the instance is created, as the engine names them. Apply carries them through to the engine's own role; the core reads none of them."
+        }
+      }
+    },
+    "initialization_setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "why"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": ["string", "number", "boolean"] },
+        "why": {
+          "type": "string",
+          "minLength": 10,
+          "description": "A step that cannot be repeated differently without destroying what it made is the step whose reasoning is most worth having in the artifact somebody approves."
+        }
       }
     },
     "tunable": {
