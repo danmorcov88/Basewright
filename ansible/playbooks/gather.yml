@@ -5,6 +5,12 @@
 # back through the model every rule uses (ADR-0020).
 #
 # Nothing here changes the target.
+#
+# One optional input: what is being provisioned. Which package repositories a host should
+# be asked to reach comes from a profile, so that one fact cannot be collected without
+# naming one (ADR-0021). Run this with `-e gather_engine=NAME`, or `-e gather_profile=DIR`
+# for a profile that is not installed yet, and without either the question is not put and
+# the answer is reported absent rather than assumed.
 - name: Read what a host is
   hosts: "{{ basewright_hosts | default('all') }}"
   gather_facts: true

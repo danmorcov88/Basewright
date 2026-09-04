@@ -13,3 +13,27 @@ gather_validate: true
 # Print what the host turned out to be. An operator running this by hand wants the answer
 # on the screen; a pipeline collecting documents for a later step does not.
 gather_report: true
+
+# What is being provisioned, which this role otherwise has no business knowing. It is here
+# for one fact and one only: which package repositories the host should be asked to reach
+# comes from a profile, so the question cannot be put without naming one (ADR-0021).
+#
+# Both are undefined by default, and that is the correct default rather than a missing
+# one. A host collected without either reports no repositories at all, the rule that reads
+# them skips, and the report says nobody asked. Name an engine to look up under profiles/,
+# or a profile directory to read, exactly as the command line does.
+#
+#   gather_engine: the name of a directory under profiles/
+#   gather_profile: the path of a profile directory that is not installed yet
+#   gather_engine_version: the version being provisioned, where a repository url is keyed
+#     by one. Defaults to the profile's own default, which is what a plan would choose.
+
+# Whether anybody named what is being provisioned. The one question this role puts that is
+# not about the host alone depends on the answer, and every other fact it collects is the
+# same whichever way this falls.
+gather_asked: "{{ (gather_engine | default('') ~ gather_profile | default('')) | length > 0 }}"
+
+# How long to wait for one repository to answer. Short: this is a reachability question,
+# and a repository that needs longer than this to say anything is one an unattended
+# package manager would give up on too.
+gather_repository_timeout: 10

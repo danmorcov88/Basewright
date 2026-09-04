@@ -9,6 +9,9 @@
   vars:
     facts_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"
     facts_path: "{{ facts_dir }}/{{ inventory_hostname }}.json"
+    asked_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts-repositories"
+    asked_path: "{{ asked_dir }}/{{ inventory_hostname }}.json"
+    exampledb: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/test/fixtures/profiles/exampledb"
     project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
 
   tasks:
@@ -94,6 +97,110 @@
       become: false
       register: preflighted
 
+    # ----------------------------------------------------------- the second document
+
+    - name: Read the document collected with a profile named
+      ansible.builtin.slurp:
+        src: "{{ asked_path }}"
+      delegate_to: localhost
+      become: false
+      register: asked
+
+    - name: Take that one apart too
+      ansible.builtin.set_fact:
+        collected_asked: "{{ asked.content | b64decode | from_json }}"
+
+    - name: A host that was asked and reached nothing says so, rather than staying silent
+      ansible.builtin.assert:
+        that:
+          - "'reachable_repositories' in collected_asked"
+          - collected_asked.reachable_repositories == []
+        fail_msg: >-
+          The repository this profile declares is at a name reserved by RFC 2606 and
+          resolves nowhere, so the host cannot have reached it. An empty list is that
+          answer. A missing key would be the collector saying nobody asked, and a
+          non-empty one would be it saying yes when it means no -- which is the failure
+          this assertion exists to catch, because it is the one that would let a host
+          through to a step that changes it.
+
+    - name: Naming a profile changes nothing else about what was collected
+      ansible.builtin.assert:
+        that:
+          - collected_asked.host == collected.host
+          - collected_asked.os == collected.os
+          - collected_asked.mounts == collected.mounts
+          - collected_asked.locales == collected.locales
+        fail_msg: >-
+          One optional input, one extra fact. If anything else moved, the collector is
+          behaving differently depending on what is being provisioned, which is the thing
+          a shared role must never do.
+
+    - name: The gate reaches a verdict on it, and the refusal report renders
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli preflight
+          --facts {{ asked_path | quote }}
+          --profile {{ exampledb | quote }}
+          --host {{ inventory_hostname }}
+        chdir: "{{ project }}"
+      changed_when: false
+      # Two: the document was read and the host is not acceptable. A host that cannot reach
+      # the repository its packages come from has nothing to install from, and that is a
+      # block with no run-time override.
+      failed_when: refused.rc != 2
+      delegate_to: localhost
+      become: false
+      register: refused
+
+    - name: Read the same verdict in the form the next step consumes
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli preflight
+          --facts {{ asked_path | quote }}
+          --profile {{ exampledb | quote }}
+          --host {{ inventory_hostname }} --json
+        chdir: "{{ project }}"
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      register: refused_json
+
+    - name: The rule blocked, rather than skipping the way it did before it was collected
+      ansible.builtin.assert:
+        that:
+          - reachability | length == 1
+          - reachability[0].outcome == 'block'
+          - reachability[0].severity == 'block'
+        fail_msg: >-
+          repo.reachable reported {{ reachability | map(attribute='outcome') | list }}.
+          Skipping is what it did on every host collected before this, and a verdict is
+          the whole of what A1 was waiting for.
+      vars:
+        reachability: >-
+          {{
+            (refused_json.stdout | from_json).results
+            | selectattr('id', 'equalto', 'repo.reachable') | list
+          }}
+
+    # The report is on stderr, where a refusal belongs: the verb exits non-zero and what it
+    # printed is why, rather than a product somebody pipes onward. It is wrapped to a fixed
+    # width, so it is read here with its whitespace flattened -- the assertion is about
+    # which words the report carries, not about where the lines happen to break.
+    - name: The refusal names the rule, what was observed, and what to do about it
+      ansible.builtin.assert:
+        that:
+          - "'PREFLIGHT' in refused.stderr"
+          - "'BLOCK repo.reachable' in report"
+          - "'does not answer from this host' in report"
+          - "'Open egress to the repository, or point the profile at a mirror' in report"
+        fail_msg: >-
+          A refusal that does not say which rule failed, what the host actually did, and
+          what would have to change is a refusal nobody can act on. That report is what
+          A1 exists to produce.
+      vars:
+        report: '{{ refused.stderr | regex_replace("\s+", " ") }}'
+
     - name: Say what the pipeline made of it
       ansible.builtin.debug:
         msg:
@@ -101,3 +208,6 @@
           - "preflight exited {{ preflighted.rc }} over {{ collected.services | length }} services"
           - "{{ collected.mounts | length }} mounts,
              {{ collected.network.listening_ports | length }} listening ports"
+          - "asked about repositories: reached
+             {{ collected_asked.reachable_repositories | length }}, preflight exited
+             {{ refused.rc }}"

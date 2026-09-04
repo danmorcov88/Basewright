@@ -35,6 +35,7 @@ READ_ONLY: dict[str, str] = {
     "ansible.builtin.slurp": "reads a file",
     "ansible.builtin.command": "runs something, and is checked separately below",
     "ansible.builtin.assert": "refuses, and refusing is not changing",
+    "ansible.builtin.uri": "makes a request, and the method is checked separately below",
     "ansible.builtin.set_fact": "arranges what was already read",
     "ansible.builtin.debug": "prints",
 }
@@ -95,6 +96,33 @@ def test_every_command_is_one_that_reports_rather_than_acts() -> None:
             continue
         invocation = str(task["ansible.builtin.command"]).strip()
         assert invocation.startswith(REPORTING_COMMANDS), f"unrecognised command: {invocation!r}"
+
+
+#: The request methods that ask a server something without telling it anything. A module
+#: that can POST is not read-only because it is on a list, so the list is not where the
+#: guarantee lives -- the method is.
+READING_METHODS: tuple[str, ...] = ("GET", "HEAD")
+
+
+def test_every_request_only_reads() -> None:
+    """`uri` is on the read-only list because of how it is called, not because of what it
+    is. It will happily PUT, and a probe that asked a repository to accept something would
+    be a collector writing to a third party on the way past."""
+    for task in tasks():
+        if module_of(task) != "ansible.builtin.uri":
+            continue
+        method = str(task["ansible.builtin.uri"].get("method", "GET")).upper()
+        assert method in READING_METHODS, f"{task['name']!r} uses {method}"
+
+
+def test_a_request_that_did_not_answer_is_an_answer() -> None:
+    """A repository that cannot be reached is the outcome a blocking rule exists to
+    receive. A probe that failed the task would end the run before the document carrying
+    that outcome was written, which is the one result nobody could act on."""
+    for task in tasks():
+        if module_of(task) != "ansible.builtin.uri":
+            continue
+        assert task.get("failed_when") is False, f"{task['name']!r} would fail the run"
 
 
 @pytest.mark.parametrize("directory", ["handlers", "files"])

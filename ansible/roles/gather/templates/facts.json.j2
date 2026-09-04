@@ -3,5 +3,9 @@
   basewright/facts/collect.py, where pytest covers it against the output of a real host.
   A template that built it field by field would be a second implementation of the contract
   living somewhere no test can reach.
+
+  `gather_probed` is undefined unless somebody named what was being provisioned, and
+  undefined is passed through as nothing rather than as an empty answer: a host nobody
+  asked and a host that reached nothing are two different documents.
 #}
-{{ gather_collected | basewright_document | to_nice_json(indent=2, sort_keys=True) }}
+{{ gather_collected | basewright_document(gather_probed | default(none)) | to_nice_json(indent=2, sort_keys=True) }}

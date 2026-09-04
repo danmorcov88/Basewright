@@ -10,7 +10,7 @@ Last reviewed: 2026-09-04.
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | in progress |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | A1 and A2 done, A3 and A4 open |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
@@ -23,12 +23,13 @@ Last reviewed: 2026-09-04.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0018           | done        |
+| Architecture decision records 0001–0021           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
 | `gather`, from a facts document                   | done        |
 | `gather`, from a live host                        | done        |
+| `reachable_repositories`, and the rule that reads it | done      |
 | The collecting role, and its molecule scenario    | done        |
 | `ansible-lint` and `molecule` in CI               | done        |
 | `preflight`, from a facts document                | done        |
@@ -84,9 +85,16 @@ What is worth knowing about it:
 - **A fact nobody could collect is absent, never invented.** A container with no message bus
   reports no `time_sync`; a host with no `ufw` reports no firewall. Absent means nobody
   asked, and the rule that wanted it skips and says so.
-- **`reachable_repositories` is still not collected.** Which repositories to try comes from
-  the profile, so it is the one fact whose collection depends on knowing what is being
-  provisioned. It arrives with the first profile.
+- **`reachable_repositories` is collected, and it is the one thing the collector is told
+  about what is being provisioned.** Nineteen of the twenty shared rules ask about the
+  machine alone. The twentieth asks whether the host can reach the repository its packages
+  would come from, and where those come from is written in a profile -- so `gather.yml`
+  takes `gather_engine` or `gather_profile`, probes the url that profile declares for this
+  host's family, and writes down what answered
+  ([ADR-0021](../adr/0021-the-collector-is-told-what-is-being-provisioned.md)). Without
+  one, the question is not put and the fact is absent. The role still knows no engine by
+  name: the urls come out of `basewright/facts/repositories.py` through a two-line filter,
+  and the guard scans the role exactly as before.
 - **The role is read-only, and that is asserted rather than hoped for.**
   `test/unit/test_gather_is_read_only.py` reads the tasks and fails on any module that
   could change the target, and on any command that does not declare it changed nothing.
@@ -98,15 +106,47 @@ What is worth knowing about it:
   kernel says. Nothing chooses a data path there, and filtering them would mean the
   collector deciding which of a host's mounts are real.
 
-`test/fixtures/hosts/collected.json` is a document the playbook produced against a real
-container, committed as it came off the run. Every other fixture beside it was written by
-hand to exercise a rule; this one is the only one whose contents nobody chose, and it is
+Two of the fixture hosts are documents the playbook produced against real containers,
+committed as they came off the run. `collected.json` was collected without naming an
+engine, so it has no `reachable_repositories` at all; `asked.json` was collected with a
+profile named, so it has one, and it is empty -- the fixture profile's repository is at a
+name reserved by RFC 2606 and resolves nowhere, on any network. That empty list is what
+the refusal capture in the README renders, and the molecule scenario proves the same thing
+on a container rather than on a file. Every other fixture beside them was written by hand
+to exercise a rule; these two are the only ones whose contents nobody chose, and they are
 there so that "a collected host is a host like any other" is a test rather than a claim.
 
-Running against a real machine found one defect that no fixture would have: the host
-reported a hundred and nine services, and `gather` rendered every name on a single line
-two thousand characters wide. The summary now reports a count, and spells the names out
-only while they fit on the line.
+Running against real machines has found three defects no fixture would have. The first
+host reported a hundred and nine services and `gather` rendered every name on a single
+line two thousand characters wide; the summary now reports a count and spells the names
+out only while they fit. The other two are below, under what a real host taught the
+rules.
+
+## What a real host taught the rules
+
+Two rules were written against fixtures, agreed with every fixture, and were wrong about a
+real machine. Both were found by pointing A1 at a container and reading the report.
+
+**`locale.present` refused a host that had the locale.** `locale -a` prints the names the C
+library stores, and it normalizes the codeset when it does: a locale generated as
+`en_US.UTF-8` is listed as `en_US.utf8`, on every Debian and Ubuntu machine there is. The
+rule compared the two strings for equality and blocked. This is the most expensive shape of
+wrong available here -- a block, with no run-time override, against a host that had exactly
+what was asked for -- and the fixtures could not have caught it, because a fixture was
+written by somebody who knew which spelling they meant. The codeset is now compared in the
+spelling the library reduces it to; the language and the territory are compared as written,
+because `en_US` and `en_GB` are different locales rather than different spellings of one.
+
+**A mount on a logical volume reported no storage type.** A mount names whatever was
+mounted and the kernel describes what is underneath, and on LVM the two never agree:
+`/dev/mapper/vg0-data` against a device the kernel calls `dm-0`. The lookup failed, the
+fact came back absent, and two sizing rules read it -- so an estate running on LVM got no
+plan at all. Resolving it through the filesystem's own uuid, against the `by-uuid` links
+the kernel reports per device, settles every spelling at once and needs no naming
+convention kept up to date. The kernel had already done the interesting part: a mapped
+device reports itself non-rotational only when everything beneath it is, so reading `dm-0`
+is reading the answer for the disks under it. The sample this is tested against is a real
+one, off a real volume group over a loop device.
 
 ## Exit codes
 
@@ -171,17 +211,14 @@ line in `layout.yml` changes and the warning stops.
 
 ### What the profile still cannot answer
 
-- **`reachable_repositories` is now collectable and still is not collected.** Which
-  repositories to try comes from the profile — for this one, `apt.postgresql.org` — and the
-  gather role does not read the profile. Wiring it is the last piece of A1, and until then
-  `repo.reachable` skips and says so rather than assuming a host can reach the internet.
 - **`random_page_cost` and `effective_io_concurrency` read whether the data path is
-  rotational, and a sizing rule that reads an unreported fact refuses the plan.** A host
-  whose storage type nobody could determine — device mapper, some NVMe layouts — therefore
-  gets no plan at all rather than a plan with a guess in it. That is the documented trade
-  and it is the one most likely to be argued with on a real estate: the alternative is a
-  parameter quietly omitted, and PostgreSQL's own default of 4.0 is the wrong answer on
-  every SSD.
+  rotational, and a sizing rule that reads an unreported fact refuses the plan.** The
+  refusal stands and it is deliberate: the alternative is a parameter quietly omitted, and
+  PostgreSQL's own default of 4.0 is the wrong answer on every SSD. What has changed is
+  which hosts fall into it. A mount on a logical volume is now resolved to the device the
+  kernel describes, so an estate running on LVM — which is most of them — gets an answer
+  rather than a refusal. What is left refusing is a host whose storage genuinely cannot be
+  determined, and that is a smaller and more defensible set than it was.
 - **The support matrix names three versions and their end-of-life dates.** They are
   upstream's published dates and they need re-reading whenever a release lands; a test
   fails the build if any of them has passed.
@@ -191,17 +228,16 @@ line in `layout.yml` changes and the warning stops.
 
 ## Known gaps
 
-- `gather` and `preflight` read a facts document. Collecting those facts from a live host
-  runs over SSH or WinRM, which is Ansible's half of the split and lands in Phase A. Until
-  then both verbs say so rather than implying a machine was contacted. `verify` exits 69
-  and points here.
-- **`repo.reachable` always skips today.** It reads `reachable_repositories`, a fact that
-  says which package repositories the host answered from. Which ones to try comes from the
-  profile, so it is the one fact whose collection depends on knowing what is being
-  provisioned, and it is collected by the gather playbook in Phase A. Absent means nobody
-  asked and the rule skips; present and empty means the host was asked and reached nothing,
-  which blocks. The rule is written, both outcomes are tested, and nothing about it changes
-  when the collector starts answering.
+- `gather` and `preflight` both read a facts document, and the playbook is what writes one
+  from a live host. `verify` is the verb that still has nothing behind it: it exits 69 and
+  points here.
+- **`repo.reachable` reaches a verdict.** It was the last piece of A1 and it is done. The
+  rule itself never changed — it was written in session 5 with both outcomes tested, and
+  what was missing was a collector willing to ask. `gather.yml` now takes an optional
+  engine or profile, probes the repository that profile declares, and writes down what
+  answered ([ADR-0021](../adr/0021-the-collector-is-told-what-is-being-provisioned.md)).
+  Absent still means nobody asked and still skips; present and empty means the host was
+  asked and reached nothing, and blocks.
 - `host.reachable` checks that the facts describe the host the request names. That a
   machine answered at all is settled by there being a document to read; what nobody notices
   going wrong is a plan built from another machine's facts, so that is what the rule checks.

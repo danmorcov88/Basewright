@@ -267,20 +267,101 @@ def test_options_are_split_into_the_list_the_contract_asks_for() -> None:
     assert found[1]["options"] == ["rw", "noatime", "attr2"]
 
 
+#: A real logical volume, and the device the kernel describes underneath it. Taken off a
+#: privileged container with udev running, an LVM volume group over a loop device, and
+#: `ansible -m setup`: a mount that says `/dev/mapper/vg0-data` while the kernel calls the
+#: same thing `dm-0`. Trimmed to the keys this reads, and otherwise as it came back.
+#:
+#: The rotational flag on `dm-0` is the point. The block layer marks a mapped device
+#: non-rotational only when everything beneath it is, so the kernel has already answered
+#: the question for the disks underneath -- which is why nothing here descends to them.
+LVM_MOUNT: dict[str, Any] = {
+    "mount": "/srv/data",
+    "device": "/dev/mapper/vg0-data",
+    "fstype": "ext4",
+    "options": "rw,relatime",
+    "size_total": 213826560,
+    "size_available": 197817344,
+    "uuid": "acc5a412-59f7-4b2e-a2fb-866b0c112564",
+}
+
+LVM_DEVICES: dict[str, dict[str, Any]] = {
+    "dm-0": {
+        "holders": [],
+        "links": {
+            "ids": ["dm-name-vg0-data", "dm-uuid-LVM-PWYj3EyQZeRpDTWF3TQGrTLrAIAZLR2m"],
+            "labels": [],
+            "masters": [],
+            "uuids": ["acc5a412-59f7-4b2e-a2fb-866b0c112564"],
+        },
+        "rotational": "0",
+        "size": "224.00 MB",
+        "virtual": 1,
+    },
+    "loop6": {
+        "holders": ["vg0-data"],
+        "links": {
+            "ids": ["lvm-pv-uuid-0TRMoS-FKqF-f8qA-ovNS-bFXw-CE6Y-ARUXb2"],
+            "labels": [],
+            "masters": ["dm-0"],
+            "uuids": [],
+        },
+        "rotational": "0",
+        "size": "256.00 MB",
+        "virtual": 1,
+    },
+}
+
+
 @pytest.mark.parametrize(
     "device,expected",
     [
         ("/dev/sda1", True),
         ("/dev/sda", True),
         ("/dev/nvme0n1p2", False),
-        ("/dev/mapper/vg-data", None),
         ("overlay", None),
+        ("/dev/mapper/vg-data", None),
     ],
 )
 def test_a_partition_is_matched_back_to_the_disk_it_sits_on(
     device: str, expected: bool | None
 ) -> None:
     assert collect.rotational_for(device, ANSIBLE_DEVICES) is expected
+
+
+def test_a_logical_volume_is_resolved_to_the_device_the_kernel_describes() -> None:
+    """LVM is on most production estates, and until this the answer was None on all of
+    them -- which is not a warning but a host that gets no plan at all, because two sizing
+    rules read it and a sizing rule reading an unreported fact refuses."""
+    found = collect.mounts([LVM_MOUNT], LVM_DEVICES)
+
+    assert found[0]["path"] == "/srv/data"
+    assert found[0]["rotational"] is False
+
+
+def test_the_uuid_is_what_resolves_it_rather_than_the_shape_of_the_name() -> None:
+    """A mount table writes the same volume as /dev/mapper/vg0-data, as /dev/vg0/data, or
+    as whatever an fstab said. Matching the filesystem's uuid against the links the kernel
+    reports does not care which, and there is no naming convention to keep up with."""
+    for named in ("/dev/vg0/data", "/dev/disk/by-uuid/acc5a412-59f7-4b2e-a2fb-866b0c112564"):
+        assert collect.rotational_for(named, LVM_DEVICES, LVM_MOUNT["uuid"]) is False
+
+
+def test_a_mount_with_no_uuid_to_offer_is_still_not_guessed_at() -> None:
+    """`N/A` is what a mount reports when it has no uuid, and it is a string like any
+    other -- so it must not match a device that also has nothing."""
+    assert collect.rotational_for("/dev/mapper/vg0-data", LVM_DEVICES, "N/A") is None
+    assert collect.rotational_for("/dev/mapper/vg0-data", LVM_DEVICES, None) is None
+
+
+def test_a_device_the_host_does_not_describe_is_left_unanswered() -> None:
+    """The refusal a plan makes when it cannot tell is the correct outcome, and it is only
+    correct while this really cannot tell rather than has not looked."""
+    unknown = {"mount": "/mnt/x", **{k: v for k, v in LVM_MOUNT.items() if k != "mount"}}
+    unknown["uuid"] = "00000000-0000-0000-0000-000000000000"
+    unknown["device"] = "/dev/mapper/somewhere-else"
+
+    assert "rotational" not in collect.mounts([unknown], LVM_DEVICES)[0]
 
 
 # ------------------------------------------------------------------------- memory
@@ -378,11 +459,81 @@ def test_a_fact_nobody_could_collect_is_absent_rather_than_null() -> None:
     assert normalize(written).time_sync is None
 
 
-def test_the_repositories_a_host_reached_are_never_claimed_here() -> None:
+# ------------------------------------------------------------------- repositories
+
+#: What one `uri` probe comes back with, in the three shapes that matter. The first two
+#: came off a container asked to reach a name that resolves and one that does not; the
+#: third is what a repository answers when the url is right and the path is not, which is
+#: still a repository the host reached.
+PROBES: list[dict[str, Any]] = [
+    {"item": "https://packages.example.test/apt", "status": 200},
+    {
+        "item": "https://packages.example.invalid/apt",
+        "status": -1,
+        "msg": "Request failed: <urlopen error [Errno -2] Name or service not known>",
+    },
+    {"item": "https://packages.example.test/yum", "status": 404, "msg": "Not Found"},
+]
+
+
+def test_a_repository_that_answered_at_all_was_reached() -> None:
+    """Any status proves the host resolved the name, connected, completed the handshake
+    and was answered, which is the whole of what the rule asks."""
+    assert collect.reached(PROBES) == [
+        "https://packages.example.test/apt",
+        "https://packages.example.test/yum",
+    ]
+
+
+def test_a_repository_that_never_answered_is_left_out() -> None:
+    assert "https://packages.example.invalid/apt" not in collect.reached(PROBES)
+
+
+def test_reaching_nothing_is_an_answer_rather_than_an_absence() -> None:
+    """The empty list is the case the whole three-valued fact exists for: a host that was
+    asked and got nowhere. It is what a blocking rule receives."""
+    assert collect.reached([PROBES[1]]) == []
+
+
+def test_a_probe_that_reported_nothing_recognisable_is_not_counted() -> None:
+    """A skipped loop item carries no status of its own, and a claim built out of one
+    would be a repository nobody proved anything about."""
+    assert collect.reached([{"item": "https://packages.example.test/apt", "skipped": True}]) == []
+    assert collect.reached([{"status": 200}]) == []
+
+
+def test_what_was_reached_is_ordered_so_two_collections_can_be_compared() -> None:
+    reversed_probes = list(reversed(PROBES))
+    assert collect.reached(reversed_probes) == collect.reached(PROBES)
+
+
+def test_the_repositories_a_host_reached_are_absent_when_nobody_asked() -> None:
     """Which ones to try comes from the profile, so it is the one fact whose collection
     depends on knowing what is being provisioned. Absent means nobody asked; present and
-    empty would mean the host was asked and reached nothing, which blocks."""
+    empty means the host was asked and reached nothing, which blocks."""
     assert "reachable_repositories" not in collect.document(COLLECTED)
+
+
+def test_a_host_that_was_asked_and_reached_nothing_says_so() -> None:
+    written = collect.document(COLLECTED, [PROBES[1]])
+
+    assert written["reachable_repositories"] == []
+    assert normalize(written).reachable_repositories == ()
+    assert normalize(written).can_reach("https://packages.example.invalid/apt") is False
+
+
+def test_a_host_that_reached_a_repository_carries_it_spelled_as_it_was_asked() -> None:
+    """The rule compares urls exactly rather than approximately, so what is written down
+    has to be the string that was probed."""
+    written = collect.document(COLLECTED, [PROBES[0]])
+
+    assert normalize(written).can_reach("https://packages.example.test/apt") is True
+    assert normalize(written).can_reach("https://packages.example.test/apt/") is False
+
+
+def test_nobody_having_asked_is_not_the_same_document_as_having_reached_nothing() -> None:
+    assert normalize(collect.document(COLLECTED)).can_reach("https://any.example.test") is None
+    assert normalize(collect.document(COLLECTED, [])).can_reach("https://any.example.test") is False
 
 
 def test_a_host_that_cannot_escalate_says_so() -> None:

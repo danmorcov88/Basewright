@@ -210,6 +210,37 @@ connection handling, no inventory, no host key policy, and its tests need no net
 argument, including the case for the obvious alternative, is in
 [ADR-0020](docs/adr/0020-the-playbook-is-the-entry-point.md).
 
+The playbook takes one optional input, and it is the only thing it is ever told about what
+is being provisioned. Nineteen of the twenty shared rules ask about the machine alone;
+the twentieth asks whether the host can reach the repository its packages would come from,
+and where those come from is written in a profile. So the collector is told which one, and
+uses it for that fact and nothing else
+([ADR-0021](docs/adr/0021-the-collector-is-told-what-is-being-provisioned.md)):
+
+```
+ansible-playbook ansible/playbooks/gather.yml -l db-01.example.invalid -e gather_engine=postgresql
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/reachability-dark.svg">
+  <img alt="The three answers reachable_repositories gives, and the verdict each one produces"
+       src="docs/assets/reachability-light.svg" width="940">
+</picture>
+
+Absent is not empty, and the difference is the whole design. A host nobody asked reports
+nothing and the rule skips; a host that was asked and reached nothing reports an empty
+list, and that is a refusal — this one on a container the role really did read:
+
+```
+basewright preflight --facts test/fixtures/hosts/asked.json --profile test/fixtures/profiles/exampledb
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/preflight-unreachable-dark.svg">
+  <img alt="basewright preflight refusing a host that cannot reach the repository its packages come from"
+       src="docs/assets/preflight-unreachable-light.svg" width="860">
+</picture>
+
 `preflight` puts twenty engine-independent rules, and every rule the profile adds, to that
 host. A refusal is a first-class outcome, so it is an answer rather than an error: it names
 the rule, what was found, what was required, and what would have to change.
@@ -473,13 +504,13 @@ committed — a stale picture fails the build the way a stale test does.
 
 ## Architecture decisions
 
-Twenty decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+Twenty-one decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
 it, what it costs, and the alternatives that were rejected. The four that shape everything
 else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The twenty decision records, grouped by the question each one answers"
+  <img alt="The twenty-one decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 
