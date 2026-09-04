@@ -16,7 +16,11 @@
     "preflight",
     "parameters",
     "layout",
+    "packages",
+    "configuration",
+    "tunables",
     "changes",
+    "secrets",
     "result"
   ],
   "properties": {
@@ -57,9 +61,20 @@
     "parameters": {
       "type": "array",
       "items": { "$ref": "#/$defs/parameter" },
-      "description": "Every tuned setting, each carrying the rule that produced it and that rule's reasoning."
+      "description": "Every tuned setting, each carrying the rule that produced it and that rule's reasoning. In the order the profile wrote them, which is the order a reviewer reads the rules in; the order they were computed in comes from what they read and is not this one."
     },
     "layout": { "$ref": "#/$defs/layout" },
+    "packages": { "$ref": "#/$defs/packages" },
+    "configuration": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/configuration_file" },
+      "description": "Every configuration file apply renders, and where each one lands. Apply reads this rather than the profile, because a plan that does not carry a value apply needs is an incomplete plan."
+    },
+    "tunables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tunable" },
+      "description": "Host settings outside the engine's own configuration that apply sets, each with what it was when the plan was made. An empty list says the engine asks nothing of the host beyond what it installs."
+    },
     "changes": {
       "type": "array",
       "items": { "$ref": "#/$defs/change" },
@@ -68,7 +83,7 @@
     "secrets": {
       "type": "array",
       "items": { "$ref": "#/$defs/secret" },
-      "description": "The secrets the instance needs, named by where they are stored. There is deliberately nowhere in this object for a value."
+      "description": "The secrets the instance needs, named by where they are stored. There is deliberately nowhere in this object for a value. An empty list says the instance needs none."
     },
     "result": { "$ref": "#/$defs/result" }
   },
@@ -189,9 +204,13 @@
     "gate_result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "severity", "outcome", "title"],
+      "required": ["id", "source", "severity", "outcome", "title"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$" },
+        "source": {
+          "enum": ["shared", "profile"],
+          "description": "Where the rule came from, which is where somebody goes to argue with it: the engine-independent rules written in the core, or the ones this profile contributed. A run's results are one list and are resolved on identical terms, so this is a label rather than a difference in standing."
+        },
         "severity": {
           "enum": ["block", "warn"],
           "description": "How badly the rule matters. There are two severities and there is no third, so a warning cannot be promoted into a refusal, and a refusal cannot be demoted at run time."
@@ -208,18 +227,120 @@
     "parameter": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["parameter", "value", "rule", "why"],
+      "required": ["parameter", "value", "unit", "display", "rule", "why"],
       "properties": {
         "parameter": { "type": "string", "minLength": 1 },
         "value": {
           "type": ["string", "number", "boolean"],
-          "description": "Rendered as the engine's configuration file expects to read it."
+          "description": "The canonical value: a count of bytes, a number of seconds, a plain number, or the word itself. Not the way a configuration file spells it, which is the engine's own syntax and belongs in the engine's template. Verify reads the running instance back and compares against this, and a comparison of rendered text against whatever a server chose to print is not a comparison."
+        },
+        "unit": {
+          "enum": ["bytes", "milliseconds", "seconds", "count", "ratio", "text"],
+          "description": "What the value is measured in, so that a reader and a comparison mean the same thing by it."
+        },
+        "display": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The value as a person reads it. It is here so that the diff between two plans is legible: 8589934592 tells a reviewer nothing that 8.0 GiB does not tell them better, and that diff is how a change to a sizing rule gets reviewed."
         },
         "rule": { "type": "string", "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$" },
         "why": { "type": "string", "minLength": 10 },
         "bounded_by": {
           "enum": ["min", "max"],
           "description": "Present when the computed value hit a floor or a ceiling, because a clamped value says something different about the host than one that landed inside its bounds."
+        },
+        "above_advisory": {
+          "type": ["string", "number"],
+          "description": "The threshold this value went past, present only when it did. Permitted, but worth saying out loud. It is not a gate: preflight finished before this parameter existed, so it travels with the parameter and joins the warnings apply has to have acknowledged."
+        }
+      }
+    },
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "install", "service"],
+      "properties": {
+        "family": { "type": "string", "pattern": "^[a-z][a-z0-9]{1,15}$" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "install": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Package names, resolved for the requested version. Native packages from a vendor repository: nothing here can describe a source build or a tarball."
+        },
+        "service": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The service unit that results, which verify then asserts is enabled and active."
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "gpg_check"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "pattern": "^https://" },
+        "key_url": { "type": "string", "pattern": "^https://" },
+        "suite": { "type": "string", "minLength": 1 },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "gpg_check": {
+          "type": "boolean",
+          "description": "Whether the repository's signature is checked. False is a decision that had to survive a code review in the profile, and the plan repeats it so that it survives one here too."
+        }
+      }
+    },
+    "configuration_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "template",
+        "destination",
+        "mode",
+        "owner",
+        "group",
+        "carries_parameters",
+        "description"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$" },
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The template in the profile that renders it."
+        },
+        "destination": { "type": "string", "pattern": "^/" },
+        "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
+        "owner": { "type": "string", "minLength": 1 },
+        "group": { "type": "string", "minLength": 1 },
+        "carries_parameters": {
+          "type": "boolean",
+          "description": "Whether the sized parameters are written into this file. At most one file may say so, because two would leave nothing to say which one the instance reads them from."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tunable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "why"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": ["string", "number", "boolean"] },
+        "observed": {
+          "type": ["string", "number", "boolean"],
+          "description": "What the setting was when the plan was made. Absent means the host did not report it, which is a different answer from it being unset, and the change is listed without a from rather than with a guess."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Changing a setting on somebody else's machine without saying why is how a provisioning tool loses its welcome."
         }
       }
     },
@@ -276,25 +397,31 @@
     "secret": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "location"],
+      "required": ["name", "location", "description"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "location": {
           "type": "string",
           "minLength": 1,
           "description": "Where the secret is stored, so that someone can find it. Never the secret."
-        }
+        },
+        "description": { "type": "string", "minLength": 1 }
       }
     },
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["applicable", "warnings_require_acknowledgement"],
+      "required": ["applicable", "warnings", "warnings_require_acknowledgement"],
       "properties": {
         "applicable": { "type": "boolean" },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many things were said out loud: the warnings preflight raised, plus every parameter that went past a threshold its rule advised against. One count, because there is one acknowledgement, and a warning that arrived after the gates closed is not a lesser warning."
+        },
         "warnings_require_acknowledgement": {
           "type": "boolean",
-          "description": "True when the plan carries warnings. Apply refuses until they are acknowledged explicitly: a warning nobody has to answer for becomes invisible within a month."
+          "description": "True when the plan carries warnings of either kind. Apply refuses until they are acknowledged explicitly: a warning nobody has to answer for becomes invisible within a month."
         }
       }
     }

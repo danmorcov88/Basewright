@@ -1,4 +1,4 @@
-"""The picture of a profile has to describe the profile that exists.
+"""The pictures have to describe the thing that exists.
 
 A diagram is the part of the documentation nobody rereads when the format changes, which
 is exactly why it is checked mechanically rather than by intention. The renderer holds one
@@ -8,16 +8,25 @@ the build says so rather than the README quietly describing a format nobody ship
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from basewright.profiles import load_profile
 from basewright.profiles.schema import PROFILE_FILES, schema_name_for
 from basewright.schema import schema_directory
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from render_assets import PROFILE_ANATOMY  # noqa: E402
+from render_assets import (  # noqa: E402
+    PLAN_ANATOMY,
+    PROFILE_ANATOMY,
+    SIZING_JOURNEY,
+    SIZING_JOURNEY_FOOTER,
+    SIZING_JOURNEY_HOST,
+    SIZING_JOURNEY_PARAMETER,
+)
 
 
 def test_the_diagram_lists_the_files_a_profile_is_made_of() -> None:
@@ -40,3 +49,54 @@ def test_every_file_the_diagram_draws_says_who_reads_it() -> None:
     for name, declares, reader in PROFILE_ANATOMY:
         assert declares, f"{name} is drawn without saying what it declares"
         assert reader, f"{name} is drawn without saying which step reads it"
+
+
+# ------------------------------------------------------------- the picture of a plan
+
+
+def test_the_diagram_lists_every_section_a_plan_carries() -> None:
+    """This contract is frozen, so a picture that describes a different one is worse
+    here than anywhere else in the documentation."""
+    schema = json.loads((schema_directory() / "plan.schema.json").read_text(encoding="utf-8"))
+    drawn = [name for name, _, _ in PLAN_ANATOMY]
+
+    assert drawn == schema["required"]
+    assert set(drawn) == set(schema["properties"])
+
+
+def test_every_section_the_diagram_draws_says_who_reads_it() -> None:
+    for name, carries, reader in PLAN_ANATOMY:
+        assert carries, f"{name} is drawn without saying what it carries"
+        assert reader, f"{name} is drawn without saying which step reads it"
+
+
+# ------------------------------------------------------ the journey of one real value
+
+
+def test_the_journey_ends_where_the_golden_plan_says_it_does() -> None:
+    """The numbers in the picture are the ones the pipeline produces, or it is fiction."""
+    plan = json.loads(
+        (ROOT / "test" / "golden" / "plan" / f"{SIZING_JOURNEY_HOST}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    parameter = next(
+        entry for entry in plan["parameters"] if entry["parameter"] == SIZING_JOURNEY_PARAMETER
+    )
+    stages = {stage: value for stage, value, _ in SIZING_JOURNEY}
+
+    assert stages["bounded"] == parameter["display"]
+    assert parameter["bounded_by"] == "max"
+    assert stages["in the plan"] == f"{parameter['parameter']} {parameter['display']}"
+    assert str(parameter["value"]) in " ".join(SIZING_JOURNEY_FOOTER), (
+        "The caption names the raw number the plan carries. If the value changed, the "
+        "caption is now claiming something the artifact does not say."
+    )
+
+
+def test_the_journey_starts_from_the_rule_the_profile_actually_wrote() -> None:
+    profile = load_profile(ROOT / "test" / "fixtures" / "profiles" / "exampledb")
+    rule = next(entry for entry in profile.sizing if entry.parameter == SIZING_JOURNEY_PARAMETER)
+    stages = {stage: value for stage, value, _ in SIZING_JOURNEY}
+
+    assert stages["the rule"] == rule.expr

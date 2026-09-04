@@ -52,8 +52,13 @@ _RENDER_ORDER: tuple[tuple[str, int], ...] = (
 _QUANTITY = re.compile(r"^\s*(?P<number>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[A-Za-z]+)?\s*$")
 
 
+#: Durations, in milliseconds. Two of them, because a sizing bound is written in the
+#: units a person says out loud and nobody has ever written a database timeout in hours.
+DURATIONS: dict[str, int] = {"ms": 1, "s": 1000}
+
+
 class UnitError(ValueError):
-    """A quantity that cannot be read as a number of bytes."""
+    """A quantity that cannot be read as a number of bytes, or of milliseconds."""
 
 
 def parse_bytes(value: str | int | float) -> int:
@@ -96,3 +101,27 @@ def render_bytes(count: int) -> str:
         if count >= size:
             return f"{count / size:.1f} {unit}"
     return f"{count} B"
+
+
+def parse_milliseconds(value: str) -> int:
+    """Read a duration written with its unit, as a count of milliseconds.
+
+    A duration always carries its unit here. A bare number is refused rather than assumed
+    to be one or the other, because a bound of ``300`` next to a parameter measured in
+    seconds and a bound of ``300`` next to one measured in milliseconds look identical
+    and differ by a factor of a thousand.
+    """
+    match = _QUANTITY.match(value)
+    if match is None or match["unit"] is None:
+        raise UnitError(
+            f"{value!r} is not a duration. Write a number followed by a unit: "
+            f"{', '.join(sorted(DURATIONS))}."
+        )
+
+    unit = match["unit"]
+    if unit not in DURATIONS:
+        raise UnitError(
+            f"{unit!r} is not a unit of time this understands. Use one of: "
+            f"{', '.join(sorted(DURATIONS))}."
+        )
+    return round(float(match["number"]) * DURATIONS[unit])

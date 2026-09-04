@@ -1,6 +1,6 @@
 # Writing a profile
 
-A profile is how Basewright learns an engine. It is seven YAML files and a directory of
+A profile is how Basewright learns an engine. It is eight YAML files and a directory of
 templates, and it is the only place in the repository where knowledge of a particular
 database lives. Nothing under `basewright/` knows the name of any engine, and nothing in
 a profile is code — which is the point: a profile is reviewable by whoever knows the
@@ -12,7 +12,7 @@ gets extended so the profile can supply it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/profile-anatomy-dark.svg">
-  <img alt="The seven files of a profile, what each declares, and which step reads it"
+  <img alt="The eight files of a profile, what each declares, and which step reads it"
        src="../assets/profile-anatomy-light.svg" width="900">
 </picture>
 
@@ -26,6 +26,7 @@ profiles/<engine>/
 ├── layout.yml            # paths, modes, the service account
 ├── sizing.yml            # parameter rules, each with its reason
 ├── packages.yml          # repositories, packages, service unit, per OS family
+├── apply.yml             # configuration files, host settings, secrets
 ├── verify.yml            # assertions about the running instance
 └── templates/            # configuration templates
 ```
@@ -65,7 +66,7 @@ from it.
 `make schema` runs the same check over every profile in the repository, and so does CI on
 every pull request.
 
-## The seven files
+## The eight files
 
 ### `profile.yml` — identity
 
@@ -252,8 +253,9 @@ rules:
     parameter: cache_size
     expr: 0.25 * host.memory.total_bytes
     unit: bytes
-    min: 128MB
-    max: 8GB
+    min: 128MiB
+    max: 8GiB
+    round_to: 128MiB
     why: >-
       A quarter of memory is the standard starting point for a shared cache, and it is
       capped because past that point the operating system page cache is the better place
@@ -266,7 +268,35 @@ the situation this project exists to end, so the schema requires it.
 The arithmetic is data here and is evaluated in Python, where it can be unit-tested
 against fixture hosts — a machine with 2 GiB, one with 512 GiB, one with rotational disks.
 A sizing rule ships with a golden fixture, so a change to it shows up as a readable diff in
-the pull request rather than as a number that quietly moved.
+the pull request rather than as a number that quietly moved. Regenerate them with
+`make golden`, and read the diff before committing it: that diff is the review of the
+decision, not a chore before the review.
+
+Four things around the expression are worth knowing.
+
+**A rule may read a parameter another rule sets.** `work_memory` can divide by
+`max_connections`, wherever in the file that rule happens to be written. The order values
+are computed in comes from what they read; the order the plan lists them in is the order
+you wrote them. Two rules that each need the other's answer first are refused by name,
+with the ring spelled out.
+
+**Bounds are written with their unit, and the unit has to be the parameter's.** `128MiB`
+for bytes, `30s` for seconds. A bare number is already in the parameter's unit. `8GB` and
+`8GiB` are different numbers and both mean exactly what they say.
+
+**Rounding happens before the bounds.** `round_to` snaps the value down to a multiple, and
+then the floor and the ceiling are applied — in that order, because rounding down after a
+floor lands underneath it. A bound that actually moved the value is recorded in the plan as
+`bounded_by`, because a number held at its ceiling says something different about the
+machine from one that arrived there.
+
+**`warn_above` does not clamp.** It marks a value that is permitted but worth saying out
+loud, and it joins the warnings `apply` has to have acknowledged. It is not a gate:
+preflight finished before the parameter existed.
+
+A rule that reads a fact the host did not report does not quietly produce no parameter. It
+refuses the plan, naming the rule and the fact, because a plan with a hole in it is one
+apply discovers halfway through.
 
 ### `packages.yml` — what to install, from where
 
@@ -294,6 +324,57 @@ Every family declared in `profile.yml` needs an entry here. A profile that claim
 it cannot install on refuses at apply time, which is the latest possible moment to find
 out.
 
+### `apply.yml` — what apply will do to the machine
+
+```yaml
+---
+engine: exampledb
+configuration:
+  - id: exampledb.server_config
+    template: exampledb.conf.j2
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/exampledb.conf
+    mode: "0640"
+    carries_parameters: true
+    description: The server configuration, where the sized parameters land.
+tunables:
+  - name: vm.swappiness
+    value: 10
+    observed: host.kernel.swappiness
+    why: >-
+      An instance whose cache the kernel has swapped out pays for the memory twice.
+secrets:
+  - name: administrative account password
+    location: basewright/{{ host }}/{{ engine }}/{{ instance }}/admin
+    description: >-
+      Generated at apply time and written once to the secret store.
+```
+
+The other seven files each answer one question. This one answers the question none of them
+does: what `apply` will actually do. Apply consumes `plan.json` and nothing else, so
+everything here ends up in the plan — which is why a destination, a mode and an owner are
+declared rather than guessed at from a template's name.
+
+`carries_parameters` marks the one file the sized parameters are written into, so the plan
+can say *write this file, with six parameters in it*. At most one file may claim them.
+Every template named has to exist under `templates/`; the loader checks, because a plan
+promising a file that cannot be rendered fails halfway through apply on somebody else's
+machine.
+
+`observed` is an expression, read against the same vocabulary as a gate rule, so the plan
+can show a host setting as a change from what it is now rather than as an instruction out
+of nowhere. A host that did not report it still gets the change, listed without a `from`.
+A setting already at the value you asked for is not listed as a change at all — apply still
+holds the host to it.
+
+A secret has a name, a place and a description. There is no fourth field, here or in the
+plan, and that is the whole of the protection: a value cannot leak into a document that has
+nowhere to put one.
+
+`tunables` and `secrets` may both be left out, and leaving them out says the engine asks
+nothing of the host and needs no secret. `configuration` is required, because every engine
+writes something.
+
+
 ### `verify.yml` — proving the instance matches its plan
 
 ```yaml
@@ -310,7 +391,7 @@ checks:
 Apply promises something; these are what proves it. A verify failure is loud, because it
 means the instance is no longer what the documentation claims it is.
 
-This is the least settled of the seven files. Its consumer is the verify step, which is
+This is the least settled of the eight files. Its consumer is the verify step, which is
 built in Phase A, and the schema is expected to gain detail there.
 
 ## Conventions worth knowing
@@ -322,8 +403,11 @@ built in Phase A, and the schema is expected to gain detail there.
   them into the number sixteen and the number four hundred and forty-eight.
 - **Sizes carry their unit.** `8GB`, `128MB`, `2GiB`. Decimal and binary units are both
   accepted and mean what they say.
-- **Placeholders** are `{{ engine }}`, `{{ instance }}` and `{{ version }}`. They are
-  resolved when the plan is assembled, not when the profile is read.
+- **Placeholders** are `{{ engine }}`, `{{ instance }}` and `{{ version }}` in a path.
+  Outside a path they are joined by `{{ environment }}`, `{{ host }}` and the host's own
+  `{{ os.family }}`, `{{ os.distro }}`, `{{ os.version }}`, `{{ os.major }}` and
+  `{{ os.codename }}`. They are resolved when the plan is assembled, not when the profile
+  is read, and one the host did not report is refused rather than left in.
 - **No secret ever appears in a profile.** Generated credentials go to the secret store,
   and the plan names the location, never the value.
 
@@ -333,8 +417,9 @@ built in Phase A, and the schema is expected to gain detail there.
 2. Fill in the support matrix from what the vendor actually publishes packages for.
 3. Write the sizing rules with their reasoning. This is the part worth taking time over.
 4. Run `python -m basewright.profiles profiles/<engine>` until it is quiet.
-5. Add the golden fixtures for the sizing rules, and a molecule scenario for the apply
-   role.
+5. Run `make golden` and read the plan it produces for each fixture host. That diff is
+   the review of your sizing decisions.
+6. Add a molecule scenario for the apply role.
 
 If any of that required a change under `basewright/`, say so in the pull request rather
 than working around it. That is the finding the second engine exists to produce.

@@ -11,3 +11,8 @@ rules:
     expr: 0.50 * host.memory.total_bytes
     unit: bytes
     why: A second rule, sharing an identifier with the first one above it.
+  - id: inconsistent.host
+    parameter: host
+    expr: "200"
+    unit: count
+    why: A parameter named after a group of facts every expression already reads.

@@ -15,6 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from basewright.expressions import base_scope
+from basewright.facts import load_facts
+from basewright.layout import resolve_paths
 from basewright.profiles import (
     InvalidProfileError,
     MissingProfileError,
@@ -23,7 +26,10 @@ from basewright.profiles import (
     load_profile,
     load_profiles,
 )
+from basewright.profiles.loader import _RESERVED_GROUPS
 from basewright.profiles.schema import PROFILE_FILES
+from basewright.request import resolve_request
+from basewright.scope import build_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "test" / "fixtures" / "profiles"
@@ -100,8 +106,8 @@ def test_sizing_rules_carry_their_reasoning(profile: Profile) -> None:
     cache = next(rule for rule in profile.sizing if rule.parameter == "cache_size")
     assert cache.identifier == "exampledb.cache_size"
     assert cache.unit == "bytes"
-    assert cache.minimum == "128MB"
-    assert cache.maximum == "8GB"
+    assert cache.minimum == "128MiB"
+    assert cache.maximum == "8GiB"
 
 
 def test_a_sizing_rule_without_bounds_reports_none(profile: Profile) -> None:
@@ -223,6 +229,7 @@ def test_a_malformed_profile_reports_every_defect_at_once() -> None:
     problems = refuse("malformed")
 
     assert located(problems) == [
+        "apply.yml:configuration[0].template",
         "layout.yml:paths.log",
         "requirements.yml:rules[0].severity",
         "requirements.yml:rules[1].override",
@@ -266,9 +273,12 @@ def test_files_that_disagree_are_reported_even_though_each_one_is_valid() -> Non
     problems = refuse("inconsistent")
 
     assert located(problems) == [
+        "apply.yml:configuration[1].carries_parameters",
+        "apply.yml:configuration[1].template",
         "layout.yml:engine",
         "packages.yml:families.rhel",
         "sizing.yml:rules[1].id",
+        "sizing.yml:rules[2].parameter",
         "support-matrix.yml:default_version",
         "support-matrix.yml:versions[0].supported_os[1].family",
     ]
@@ -322,7 +332,7 @@ def test_the_report_names_the_file_the_place_and_the_way_out() -> None:
 
     report = raised.value.report()
 
-    assert "5 problems" in report
+    assert "6 problems" in report
     assert "requirements.yml" in report
     assert "rules[0].severity" in report
     assert "->" in report
@@ -416,3 +426,43 @@ def test_a_conflict_matches_exactly_or_by_prefix(profile: Profile) -> None:
     assert profile.conflicting("exampledb@3-main") is not None
     assert profile.conflicting("nginx") is None
     assert profile.conflicting("notexampledb") is None
+
+
+# ------------------------------------------------------------------- what apply will do
+
+
+def test_a_profile_declares_the_files_apply_writes(profile: Profile) -> None:
+    """Nothing else in a profile says what apply will do to the machine."""
+    identifiers = [entry.identifier for entry in profile.configuration]
+
+    assert identifiers == ["exampledb.server_config", "exampledb.access_config"]
+    assert profile.configuration[0].carries_parameters
+    assert not profile.configuration[1].carries_parameters
+
+
+def test_a_host_setting_carries_the_expression_that_reads_it_now(profile: Profile) -> None:
+    """An expression, not a name the core maps: a table of settings in the core is a table
+    that has to grow every time a profile wants one nobody thought of."""
+    swappiness = profile.tunables[0]
+
+    assert swappiness.name == "vm.swappiness"
+    assert swappiness.observed == "host.kernel.swappiness"
+    assert len(swappiness.why) > 10
+
+
+def test_a_secret_has_a_name_and_a_place_and_no_third_field(profile: Profile) -> None:
+    """The strongest form of never logging a secret is having nowhere to put one."""
+    secret = profile.secrets[0]
+
+    assert "{{ instance }}" in secret.location
+    assert not hasattr(secret, "value")
+
+
+def test_the_reserved_names_are_the_ones_a_scope_actually_has(profile: Profile) -> None:
+    """The loader refuses a parameter that shadows the vocabulary, from a list written
+    down beside it. If the two ever drift, the refusal guards the wrong names."""
+    facts = load_facts(ROOT / "test" / "fixtures" / "hosts" / "typical.json")
+    request = resolve_request(profile, host=facts.host, environment="production")
+    scope = build_scope(facts, profile, request, resolve_paths(profile, request))
+
+    assert set(_RESERVED_GROUPS) == set(scope) - set(base_scope())

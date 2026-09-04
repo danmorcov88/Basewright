@@ -66,9 +66,19 @@ person, committed to Git, attached to a change request, and diffed against the p
 three months ago. A provisioning tool where the reasoning lives only in the operator's head
 is the thing being replaced.
 
-The rendering below is the shape that artifact takes. It is a specification, not a capture:
-the planner is still being built, and this section is replaced with real generated output —
-the same way every other image here is generated — as soon as `plan` produces one.
+The artifact exists and its contract is frozen. Here is what it carries, and which step
+reads each part:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-anatomy-dark.svg">
+  <img alt="The sections of plan.json, what each carries, and which step reads it"
+       src="docs/assets/plan-anatomy-light.svg" width="900">
+</picture>
+
+The console rendering below is the shape it takes for a person. That part is a
+specification, not a capture: the reporter is still being built, and this section is
+replaced with real generated output — the same way every other image here is generated —
+as soon as it produces one.
 
 ```
 Basewright plan — db-prod-07.internal
@@ -149,7 +159,7 @@ thin apply role.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/profile-anatomy-dark.svg">
-  <img alt="The seven files of a profile, what each declares, and which step reads it"
+  <img alt="The eight files of a profile, what each declares, and which step reads it"
        src="docs/assets/profile-anatomy-light.svg" width="900">
 </picture>
 
@@ -176,7 +186,14 @@ plan next to the computed value:
         the OS page cache is the better place for the memory."
 ```
 
-A number without a reason is exactly the situation Basewright exists to end.
+A number without a reason is exactly the situation Basewright exists to end. Here is one
+real value, from the rule that produced it to the line it occupies in a plan:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sizing-journey-dark.svg">
+  <img alt="A cache size, from its expression through rounding and bounds to the plan"
+       src="docs/assets/sizing-journey-light.svg" width="940">
+</picture>
 
 ## Quickstart
 
@@ -214,13 +231,17 @@ it is not happy about, and those warnings are acknowledged before apply will run
        src="docs/assets/preflight-passed-light.svg" width="840">
 </picture>
 
-The verbs that follow are still a promise, and they say so:
+`plan` runs those rules again, refuses outright if any of them blocks, and otherwise sizes
+every parameter, resolves the layout, and works out everything `apply` would do. The
+artifact goes to `--json`; what it prints is a confirmation, until the reporter lands:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-plan-dark.svg">
-  <img alt="basewright plan reporting that the verb is not built yet"
-       src="docs/assets/cli-plan-light.svg" width="620">
+  <img alt="basewright plan summarising the artifact it produced for a host"
+       src="docs/assets/cli-plan-light.svg" width="700">
 </picture>
+
+`apply` and `verify` are still a promise, and say so.
 
 The five verbs exist as an interface already:
 
@@ -361,7 +382,7 @@ else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The fifteen decision records, grouped by the question each one answers"
+  <img alt="The eighteen decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 

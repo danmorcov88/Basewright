@@ -1,0 +1,82 @@
+PREFLIGHT  db-crowded.invalid -- exampledb 3, instance main
+  12 pass -- 6 warn -- 4 block -- 1 skipped
+
+  BLOCK disk.free_space           data needs 20GB and / has 6.0 GiB free; journal needs
+                                  10GB and / has 6.0 GiB free; backup needs 50GB and
+                                  /backup has 2.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK engine.not_installed      exampledb 2 is running -- an instance of this engine,
+                                  from the vendor packages
+                                  -> Remove the existing installation, or provision this
+                                     instance on another host. Basewright never adopts,
+                                     reconfigures or upgrades something it did not
+                                     create, because it cannot tell what depends on it.
+
+  BLOCK host.privilege            basewright cannot escalate
+                                  -> Give the account Basewright connects with
+                                     unattended privilege escalation on this host, or
+                                     connect with one that has it. Installing packages,
+                                     creating an account and writing under /etc are not
+                                     optional parts of provisioning an instance.
+
+  BLOCK port.free                 exampledb is listening on 6432 at 127.0.0.1
+                                  -> Choose another port for this instance, or stop what
+                                     is on this one. Two things cannot share a port, and
+                                     finding that out when the service fails to start
+                                     tells you less than finding it out now.
+
+  WARN  disk.separate_mounts      journal and data both live on /; log and data both
+                                  live on /
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  exampledb.storage.rotational
+                                  not path.data.rotational does not hold on this host
+                                  -> Move the data path to solid state storage if the
+                                     workload is latency sensitive. Rotational storage
+                                     is supported and will be sized for, but it is not
+                                     the assumption the default parameters are written
+                                     against.
+
+  WARN  firewall.state            firewalld is active and does not admit 6432
+                                  -> Open 6432 to the clients that need it once the
+                                     instance is running. Basewright does not change a
+                                     firewall: what may reach a database is a decision
+                                     about the network, and it is not this tool's to
+                                     make.
+
+  WARN  os.swappiness             vm.swappiness is 60, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  WARN  os.thp                    transparent huge pages are always; this profile
+                                  prefers madvise, never
+                                  -> Set them to madvise or never persistently, in the
+                                     boot configuration rather than only at run time. A
+                                     setting that reverts on the next reboot is a
+                                     problem that comes back at the worst moment.
+
+  WARN  time.sync                 chrony is present but not synchronized
+                                  -> Get the clock synchronized before provisioning.
+                                     Timestamps in the log, the ordering in a replicated
+                                     setup and every certificate the instance presents
+                                     all assume the machine knows what time it is.
+
+  SKIP  repo.reachable            the host did not report whether it can reach exampledb
+                                  -> Reaching a repository is proved from the host,
+                                     which happens when the facts are collected over
+                                     SSH. Until then this is unanswered rather than
+                                     assumed, and the first task of apply is where it
+                                     would otherwise be discovered.
+
+REFUSED  4 rules block this host. No plan was produced, and there is no flag that
+         produces one.

@@ -1,0 +1,35 @@
+---
+engine: exampledb
+configuration:
+  - id: exampledb.server_config
+    template: exampledb.conf.j2
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/exampledb.conf
+    mode: "0640"
+    carries_parameters: true
+    description: The server configuration, where the sized parameters land.
+  - id: exampledb.access_config
+    template: access.conf.j2
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/access.conf
+    mode: "0640"
+    description: Which connections are accepted, and how they authenticate.
+tunables:
+  - name: vm.swappiness
+    value: 10
+    observed: host.kernel.swappiness
+    why: >-
+      An instance whose cache the kernel has swapped out pays for the memory twice: once
+      to hold it and again to fault it back in. Ten leaves the kernel room to swap under
+      real pressure without doing it for the sake of the page cache.
+  - name: vm.overcommit_memory
+    value: 2
+    observed: host.kernel.overcommit_memory
+    why: >-
+      Refusing an allocation the machine cannot honour is better than granting it and
+      having the out-of-memory killer choose which process dies, because it chooses the
+      largest one, which is this instance.
+secrets:
+  - name: administrative account password
+    location: basewright/{{ host }}/{{ engine }}/{{ instance }}/admin
+    description: >-
+      The password for the instance's administrative account, generated at apply time and
+      written once to the secret store.

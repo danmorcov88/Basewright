@@ -8,6 +8,7 @@ free-space threshold and the mount a plan reports all depend on getting it right
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from basewright.planner.schema import plan_problems
 from basewright.units import parse_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
+GOLDEN_PLAN = ROOT / "test" / "golden" / "plan" / "typical.json"
 HOSTS = ROOT / "test" / "fixtures" / "hosts"
 
 #: Every fixture host, and the one thing each of them is for.
@@ -214,36 +216,13 @@ def test_a_fact_that_was_not_observed_is_left_out_rather_than_nulled() -> None:
 
 
 def _plan_around(section: dict[str, object]) -> dict[str, object]:
-    """The smallest plan that is valid, so the host section is what is being tested."""
-    return {
-        "schema_version": "1",
-        "plan_id": "abc123",
-        "generated_at": "2026-09-03T10:14:22Z",
-        "tool_version": "0.1.0",
-        "profile": {"engine": "exampledb", "version": "1.0.0"},
-        "request": {
-            "host": "db-fixture.invalid",
-            "engine": "exampledb",
-            "version": "3",
-            "version_source": "requested",
-            "environment": "production",
-            "instance": "main",
-        },
-        "host": section,
-        "preflight": {"summary": {"pass": 1, "warn": 0, "block": 0, "skip": 0}, "results": []},
-        "parameters": [],
-        "layout": {
-            "paths": [
-                {
-                    "purpose": "data",
-                    "path": "/var/lib/basewright/exampledb/main/data",
-                    "mode": "0700",
-                    "owner": "exampledb",
-                    "group": "exampledb",
-                }
-            ],
-            "service_account": {"name": "exampledb", "shell": "/usr/sbin/nologin", "create": True},
-        },
-        "changes": [],
-        "result": {"applicable": True, "warnings_require_acknowledgement": False},
-    }
+    """A real plan with this host's section dropped into it.
+
+    Written this way rather than as a hand-made minimal document, because a hand-made one
+    only proves that the host section satisfies whatever the schema said when it was
+    typed. Borrowing a plan the pipeline actually produced means the two contracts are
+    held together by something that would notice if either moved.
+    """
+    plan: dict[str, object] = json.loads(GOLDEN_PLAN.read_text(encoding="utf-8"))
+    plan["host"] = section
+    return plan

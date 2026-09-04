@@ -11,7 +11,7 @@ on the merits, and supersede when the merits change.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/decisions-dark.svg">
-  <img alt="The fifteen decision records, grouped by the question each one answers"
+  <img alt="The eighteen decision records, grouped by the question each one answers"
        src="../assets/decisions-light.svg" width="980">
 </picture>
 
@@ -34,6 +34,9 @@ on the merits, and supersede when the merits change.
 | [0013](0013-backups-are-out-of-scope.md)              | Backups are out of scope and belong to a separate tool               |
 | [0014](0014-rules-are-expressions-not-code.md)        | A rule a profile writes is an expression, safely interpreted          |
 | [0015](0015-shared-gates-are-code.md)                 | The shared gates are code; a profile's gates are data                |
+| [0016](0016-plans-carry-canonical-values.md)          | A plan carries canonical values, not rendered ones                   |
+| [0017](0017-a-plan-is-named-by-its-content.md)        | A plan is named by its content                                       |
+| [0018](0018-what-apply-will-do-is-declared.md)        | What apply will do is declared, not inferred                         |
 
 ## Reading order
 

@@ -1,4 +1,9 @@
-"""The vocabulary a rule written in a profile is evaluated against.
+"""The vocabulary an expression written in a profile is evaluated against.
+
+One vocabulary, not two. A gate rule asking whether a host is fit and a sizing rule
+working out how large a cache should be read the same names for the same things, because
+a profile author who has learned one has learned the other, and because a fact that means
+something different to the two would be a fact nobody could reason about.
 
 Everything an expression can reach is built here, and it is all plain values in plain
 mappings: no object of ours ever enters an expression, which is what makes the evaluator

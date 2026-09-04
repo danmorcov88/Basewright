@@ -1,0 +1,56 @@
+PREFLIGHT  db-rocky.invalid -- exampledb 3, instance main
+  16 pass -- 3 warn -- 2 block -- 2 skipped
+
+  BLOCK disk.free_space           backup needs 50GB and / has 44.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK os.supported              rocky 9.4 is not supported by ExampleDB 3; it supports
+                                  ubuntu 22.04, ubuntu 24.04, rocky 9
+                                  -> Provision this instance on a supported operating
+                                     system, or choose a version of the engine that
+                                     supports this one. The support matrix is where an
+                                     unsupported combination is argued about, and it is
+                                     in the profile where a reviewer sees it.
+
+  WARN  disk.separate_mounts      journal and data both live on /var; log and data both
+                                  live on /var
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  os.swappiness             vm.swappiness is 30, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  WARN  os.thp                    transparent huge pages are always; this profile
+                                  prefers madvise, never
+                                  -> Set them to madvise or never persistently, in the
+                                     boot configuration rather than only at run time. A
+                                     setting that reverts on the next reboot is a
+                                     problem that comes back at the worst moment.
+
+  SKIP  exampledb.storage.rotational
+                                  whether this applies depends on path.data.rotational,
+                                  which was not reported
+                                  -> Move the data path to solid state storage if the
+                                     workload is latency sensitive. Rotational storage
+                                     is supported and will be sized for, but it is not
+                                     the assumption the default parameters are written
+                                     against.
+
+  SKIP  repo.reachable            the host did not report whether it can reach exampledb
+                                  -> Reaching a repository is proved from the host,
+                                     which happens when the facts are collected over
+                                     SSH. Until then this is unanswered rather than
+                                     assumed, and the first task of apply is where it
+                                     would otherwise be discovered.
+
+REFUSED  2 rules block this host. No plan was produced, and there is no flag that
+         produces one.

@@ -57,12 +57,20 @@ assets:  ## Regenerate the documentation diagrams and terminal captures
 assets-check:  ## Fail if a committed diagram or capture is stale
 	$(PYTHON) tools/render_assets.py --check
 
+.PHONY: golden
+golden:  ## Regenerate the golden plans, then read the diff -- it is the review
+	$(PYTHON) tools/render_goldens.py
+
+.PHONY: golden-check
+golden-check:  ## Fail if a committed golden plan is stale
+	$(PYTHON) tools/render_goldens.py --check
+
 .PHONY: molecule
 molecule:  ## Run the Ansible role tests in containers (slow)
 	$(PYTHON) -m molecule test
 
 .PHONY: all
-all: lint test assets-check  ## Everything CI runs on a pull request, except molecule
+all: lint test assets-check golden-check  ## Everything CI runs on a pull request, except molecule
 
 .PHONY: clean
 clean:  ## Remove build and cache artifacts

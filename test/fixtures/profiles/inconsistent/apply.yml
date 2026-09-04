@@ -1,0 +1,18 @@
+---
+# Valid against apply.schema.json on its own. What is wrong is only visible next to the
+# rest of the profile: a template the directory does not hold, and a second file claiming
+# the parameters the first one already carries.
+engine: inconsistent
+configuration:
+  - id: inconsistent.server_config
+    template: present.conf.j2
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/server.conf
+    mode: "0640"
+    carries_parameters: true
+    description: The server configuration, where the sized parameters land.
+  - id: inconsistent.second_config
+    template: absent.conf.j2
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/second.conf
+    mode: "0640"
+    carries_parameters: true
+    description: A second file claiming the parameters, from a template nobody wrote.

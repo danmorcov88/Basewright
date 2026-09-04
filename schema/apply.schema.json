@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/apply.schema.json",
+  "title": "What apply will do",
+  "description": "The changes an instance needs that no other file of the profile already implies. The other seven each answer one question -- what versions exist, what refuses a host, where files live, how parameters are sized, what to install, what to assert afterwards -- and none of them answers what apply will actually do to the machine. Declaring it here is what lets the plan list every change before anything is touched, without the core knowing what any particular engine needs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine", "configuration"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "configuration": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/configuration_file" },
+      "description": "Every configuration file apply writes, in the order it writes them. An existing file is never overwritten without a timestamped copy left beside it, which is a property of apply rather than something a profile can turn off."
+    },
+    "tunables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tunable" },
+      "description": "Host settings outside the engine's own configuration that the instance needs changed. Absent means the engine asks nothing of the host beyond what it installs."
+    },
+    "secrets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/secret" },
+      "description": "The secrets the instance needs, and where each is stored. There is deliberately nowhere here, or in the plan this produces, for a value."
+    }
+  },
+  "$defs": {
+    "configuration_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "template", "destination", "mode", "description"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*([.][a-z][a-z0-9_]*)+$",
+          "description": "A namespaced identifier, unique across the profile, printed in the plan beside the change it produces."
+        },
+        "template": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*[.]j2$",
+          "description": "A file in the profile's templates directory. The loader checks that it is there: a plan promising a file the profile cannot render is a promise broken at apply time."
+        },
+        "destination": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Where the rendered file lands, which may reference the placeholders a path has."
+        },
+        "mode": {
+          "type": "string",
+          "pattern": "^0[0-7]{3}$"
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+          "description": "Absent means the service account, which is what a configuration file the engine reads at start-up almost always wants."
+        },
+        "carries_parameters": {
+          "type": "boolean",
+          "description": "Whether this is the file the sized parameters are written into. At most one file may say so. It is a boolean rather than a list of what a file contains, because the count of parameters is the only thing the core has any business knowing about the inside of a configuration file."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 200,
+          "description": "What the file is for, rendered into the plan next to the change."
+        }
+      }
+    },
+    "tunable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "why"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{1,63}$",
+          "description": "The setting as the host names it."
+        },
+        "value": {
+          "type": ["string", "number", "boolean"],
+          "description": "What apply sets it to."
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression reading the fact that says what the setting is now, so the plan can show the change as a from and a to. It is an expression rather than a name the core maps, because a table of host setting names inside the core is a table that has to grow every time a profile wants a setting nobody thought of. A host that did not report it still gets the change, without a from."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 10,
+          "description": "The reasoning, rendered into the plan. Changing a setting on somebody else's machine without saying why is how a provisioning tool loses its welcome."
+        }
+      }
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "location", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the secret is stored, so that whoever needs it can find it. It may reference the placeholders a path has, and the host. Never the secret."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 200
+        }
+      }
+    }
+  }
+}
