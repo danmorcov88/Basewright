@@ -1,0 +1,12 @@
+---
+# The first verb, and the entry point for it. Semaphore runs this; it does not run the
+# CLI. Collecting facts is an act against a machine and acts belong to Ansible, so the
+# playbook reaches the host, writes the document, and then hands it to the CLI to be read
+# back through the model every rule uses (ADR-0020).
+#
+# Nothing here changes the target.
+- name: Read what a host is
+  hosts: "{{ basewright_hosts | default('all') }}"
+  gather_facts: true
+  roles:
+    - role: gather

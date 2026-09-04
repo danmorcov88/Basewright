@@ -10,7 +10,7 @@ Last reviewed: 2026-09-04.
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | not started |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | in progress |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
@@ -28,7 +28,9 @@ Last reviewed: 2026-09-04.
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
 | `gather`, from a facts document                   | done        |
-| `gather`, from a live host                        | Phase A     |
+| `gather`, from a live host                        | done        |
+| The collecting role, and its molecule scenario    | done        |
+| `ansible-lint` and `molecule` in CI               | done        |
 | `preflight`, from a facts document                | done        |
 | Expression language, and its interpreter          | done        |
 | Gate engine and severity resolution               | done        |
@@ -57,6 +59,54 @@ It exists as a verb, it declares no flags, it exits `69`, and it names the page 
 so. An unbuilt verb declaring flags no implementation will read would be the same class of
 claim as a screenshot of behaviour that does not exist, so its flags arrive with it.
 
+## Collecting from a live host
+
+`gather` reads a real machine now. `ansible/playbooks/gather.yml` reaches the host, the
+`gather` role reads it, and the document lands on the control node where the CLI reads it
+straight back. The playbook is the entry point and the CLI never opens a socket
+([ADR-0020](../adr/0020-the-playbook-is-the-entry-point.md)).
+
+What is worth knowing about it:
+
+- **Parsing is Python.** `basewright/facts/collect.py` turns what a machine printed into the
+  contract document, and the role's template is one line long. Every sample the parsers are
+  tested against came off a real host, because the failure this code has is not a crash --
+  it is reading a line slightly wrong and handing the gate engine a machine that does not
+  exist.
+- **The collector enumerates; the profile decides.** Services come from
+  `ansible.builtin.service_facts` and are reported whatever they are. A shared role that
+  went looking for one service by name would be the same defect as a planner that branched
+  on one, and the engine-name guard now scans shared roles for exactly that.
+- **A host that cannot enumerate its services gets no document.** An empty list is what
+  makes a conflict rule pass on a machine already running the thing being provisioned, so
+  the role refuses rather than writing one that would be read as an all-clear.
+- **A fact nobody could collect is absent, never invented.** A container with no message bus
+  reports no `time_sync`; a host with no `ufw` reports no firewall. Absent means nobody
+  asked, and the rule that wanted it skips and says so.
+- **`reachable_repositories` is still not collected.** Which repositories to try comes from
+  the profile, so it is the one fact whose collection depends on knowing what is being
+  provisioned. It arrives with the first profile.
+- **The role is read-only, and that is asserted rather than hoped for.**
+  `test/unit/test_gather_is_read_only.py` reads the tasks and fails on any module that
+  could change the target, and on any command that does not declare it changed nothing.
+  Molecule's idempotence check cannot do this job here: the document records the moment it
+  was collected, so a second run writes a different file, and a collector producing
+  byte-identical output would be lying about when it looked.
+- **A container reports Docker's bind-mounted files as mounts.** `/etc/hostname` and its
+  two neighbours really are mount points in a container, and the collector reports what the
+  kernel says. Nothing chooses a data path there, and filtering them would mean the
+  collector deciding which of a host's mounts are real.
+
+`test/fixtures/hosts/collected.json` is a document the playbook produced against a real
+container, committed as it came off the run. Every other fixture beside it was written by
+hand to exercise a rule; this one is the only one whose contents nobody chose, and it is
+there so that "a collected host is a host like any other" is a test rather than a claim.
+
+Running against a real machine found one defect that no fixture would have: the host
+reported a hundred and nine services, and `gather` rendered every name on a single line
+two thousand characters wide. The summary now reports a count, and spells the names out
+only while they fit on the line.
+
 ## Exit codes
 
 Four, closed, and documented in [ADR-0019](../adr/0019-exit-codes-are-the-contract.md):
@@ -75,9 +125,11 @@ rather than changing it.
 These belong in the pipeline described in the brief and are added when there is something
 for them to check:
 
-- `ansible-lint` — waits for the first playbook and role, in Phase A.
-- `molecule` — waits for the first engine role, in Phase A.
-- Quickstart output assertions — wait for a working end-to-end path, in Phase A.
+- `molecule`, for an engine role — the collecting role has a scenario and it runs on every
+  pull request. An engine's own role has nothing to test yet.
+- Quickstart output assertions — the commands the README shows are held against the
+  commands that produced its pictures, which is as much as can be asserted while there is
+  no engine to provision. The rest waits for a working end-to-end path.
 
 ## Placeholder values
 

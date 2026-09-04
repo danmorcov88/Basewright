@@ -1,0 +1,15 @@
+---
+# Where the document lands, on the control node rather than on the target. A host is not
+# asked to keep a record of having been looked at, and the next step in the pipeline runs
+# where this playbook runs.
+gather_output_dir: "{{ playbook_dir }}/../../facts"
+gather_output_path: "{{ gather_output_dir }}/{{ inventory_hostname }}.json"
+
+# Read the document back through the model every rule is written against, and fail if it
+# does not hold up. The contract is enforced by the tool that consumes it rather than by a
+# second copy of the schema living in Ansible, which is the only way the two cannot drift.
+gather_validate: true
+
+# Print what the host turned out to be. An operator running this by hand wants the answer
+# on the screen; a pipeline collecting documents for a later step does not.
+gather_report: true

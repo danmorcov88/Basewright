@@ -1,8 +1,9 @@
 """The gather verb: the first one that does something.
 
-It reads a facts document, normalizes it and says what the machine is. Collecting those
-facts from a live host runs over SSH, which is Ansible's half of the split and belongs to
-Phase A -- so the verb says that plainly rather than implying a machine was contacted.
+It reads a facts document, normalizes it and says what the machine is. What writes that
+document is `ansible/playbooks/gather.yml`, which reaches the host and then hands the file
+straight back to this verb (ADR-0020) -- so a fixture and a collected host are the same
+kind of thing, read by the same code.
 """
 
 from __future__ import annotations
@@ -97,3 +98,59 @@ def test_a_host_that_contradicts_itself_is_refused(
 
     assert code == EXIT_REFUSED
     assert "cpu.threads" in capsys.readouterr().err
+
+
+# --------------------------------------------------- a host that was actually collected
+
+#: A document the collecting playbook produced against a real container, committed as it
+#: came off the run. Every other fixture here was written by hand to exercise a rule; this
+#: one exists to prove the collector and the core still describe the same thing, and it is
+#: the only one whose contents nobody chose.
+COLLECTED = HOSTS / "collected.json"
+
+
+def test_a_collected_host_is_a_host_like_any_other(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The point of the contract. A document that came off a wire and one written by hand
+    are read by the same code, or the fixtures have been proving something else."""
+    code = main(["gather", "--facts", str(COLLECTED)])
+
+    printed = capsys.readouterr().out
+    assert code == EXIT_OK
+    assert "gather-debian12" in printed
+    assert "Debian 12" in printed
+
+
+def test_a_collected_host_carries_what_the_gates_read() -> None:
+    """Not that the file parses -- that it answers the questions the rules ask. A collector
+    that produced a valid document missing the facts every rule reads would pass a schema
+    and be useless."""
+    collected = json.loads(COLLECTED.read_text(encoding="utf-8"))
+
+    assert collected["os"]["family"] == "debian"
+    assert collected["services"], "an empty service list is what makes a conflict rule pass"
+    assert collected["privileges"]["can_escalate"] is True
+    assert collected["network"]["listening_ports"] == []
+    assert "reachable_repositories" not in collected
+
+
+def test_a_summary_of_a_real_machine_stays_a_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A hundred and nine service names is forty lines that only a profile could
+    interpret. The names are in the document; the rule that reads them is in preflight."""
+    main(["gather", "--facts", str(COLLECTED)])
+
+    printed = capsys.readouterr().out
+    assert "109 services" in printed
+    assert "systemd-journald" not in printed
+    for line in printed.splitlines():
+        assert len(line) <= 88, "a summary nobody can read in a task log is not a summary"
+
+
+def test_a_short_list_is_still_spelled_out(capsys: pytest.CaptureFixture[str]) -> None:
+    """What decides is how much fits on a line, which is a fact about the page rather than
+    a judgement about the host."""
+    main(["gather", "--facts", str(HOSTS / "crowded.json")])
+    assert "1 service: exampledb" in capsys.readouterr().out

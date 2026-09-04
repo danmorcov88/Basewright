@@ -1,0 +1,7 @@
+{#
+  One line, deliberately. Assembling this document is decided in
+  basewright/facts/collect.py, where pytest covers it against the output of a real host.
+  A template that built it field by field would be a second implementation of the contract
+  living somewhere no test can reach.
+#}
+{{ gather_collected | basewright_document | to_nice_json(indent=2, sort_keys=True) }}

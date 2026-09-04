@@ -1,0 +1,113 @@
+---
+# Reading a machine. Nothing here changes anything, and every task says so, because a
+# collector that reports a change is a collector somebody stops trusting to be read-only.
+#
+# The engine being provisioned is not known to this role and never will be. What is
+# installed is enumerated, not searched for: a profile decides what conflicts with it, and
+# a shared role that knew one service from another would be the first crack in the rule the
+# whole architecture rests on.
+
+- name: Enumerate the services the host has, whatever they are
+  ansible.builtin.service_facts:
+
+- name: Read the sockets something is already listening on
+  ansible.builtin.command: ss -H -lntupn
+  changed_when: false
+  become: true
+  register: gather_sockets
+
+- name: Read the locales the host has generated
+  ansible.builtin.command: locale -a
+  changed_when: false
+  register: gather_locales
+
+- name: Read the kernel settings a rule has an opinion about
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop:
+    - /proc/sys/vm/swappiness
+    - /proc/sys/vm/overcommit_memory
+    - /sys/kernel/mm/transparent_hugepage/enabled
+  register: gather_kernel
+  failed_when: false
+
+- name: Read how much memory is actually available
+  ansible.builtin.slurp:
+    src: /proc/meminfo
+  register: gather_meminfo
+
+- name: Ask whether the clock is being kept right
+  ansible.builtin.command: timedatectl show
+  changed_when: false
+  failed_when: false
+  register: gather_timedate
+
+- name: Ask what the firewall admits
+  ansible.builtin.command: ufw status
+  changed_when: false
+  failed_when: false
+  become: true
+  register: gather_ufw
+
+- name: Establish whether this account can do the work a later step will need
+  ansible.builtin.command: id -u
+  changed_when: false
+  failed_when: false
+  become: true
+  register: gather_escalation
+
+- name: Hand every answer over exactly as the host gave it
+  ansible.builtin.set_fact:
+    gather_collected:
+      host: "{{ inventory_hostname }}"
+      facts: "{{ ansible_facts }}"
+      sockets: "{{ gather_sockets.stdout }}"
+      locales: "{{ gather_locales.stdout_lines }}"
+      kernel: "{{ gather_kernel.results }}"
+      meminfo: "{{ gather_meminfo.content | b64decode }}"
+      timedate: "{{ gather_timedate.stdout }}"
+      ufw: "{{ gather_ufw.stdout }}"
+      escalation: "{{ gather_escalation }}"
+
+- name: Refuse to write a document that says nothing about services
+  ansible.builtin.assert:
+    that: ansible_facts.services | length > 0
+    fail_msg: >-
+      This host reported no services at all, which is not the same as having none. An
+      empty list is what makes a conflict rule pass on a machine that already runs the
+      thing being provisioned, so no document is written rather than one that would be
+      read as an all-clear.
+    success_msg: "{{ ansible_facts.services | length }} services enumerated"
+
+- name: Make somewhere for the document to land
+  ansible.builtin.file:
+    path: "{{ gather_output_dir }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Write what the host reported
+  ansible.builtin.template:
+    src: facts.json.j2
+    dest: "{{ gather_output_path }}"
+    mode: "0640"
+  delegate_to: localhost
+  become: false
+
+- name: Read the document back through the contract, and fail if it does not hold up
+  ansible.builtin.command: >-
+    {{ ansible_playbook_python }} -m basewright.cli gather --facts {{ gather_output_path | quote }}
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  register: gather_rendering
+  when: gather_validate | bool
+
+- name: Say what the host turned out to be
+  ansible.builtin.debug:
+    msg: "{{ gather_rendering.stdout_lines }}"
+  when:
+    - gather_report | bool
+    - gather_validate | bool

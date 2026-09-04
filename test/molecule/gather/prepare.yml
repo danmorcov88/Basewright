@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Give the target the locale a rule asks about
+      ansible.builtin.raw: locale-gen en_US.UTF-8 || true
+      changed_when: false

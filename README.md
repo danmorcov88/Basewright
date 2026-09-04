@@ -153,7 +153,7 @@ real value, from the rule that produced it to the line it occupies in a plan:
 **Not yet a quickstart, and it says so rather than pretending.** No engine profile ships in
 this repository — `profiles/` is empty until Phase A — so there is nothing here you can point
 at a server and provision. What follows is a walkthrough of the three verbs that work,
-against the fixtures committed under `test/`, which is as much as exists today.
+against documents committed under `test/`, which is as much as exists today.
 
 Every command below is copy-pasteable after `make install`, and every one of them is the
 command that produced the picture underneath it: `tools/render_assets.py` runs them to make
@@ -173,8 +173,41 @@ basewright gather --facts test/fixtures/hosts/typical.json
        src="docs/assets/cli-gather-light.svg" width="700">
 </picture>
 
-Collecting those facts from a live machine runs over SSH, which is Ansible's half of the
-split and is not built yet.
+Where that document comes from is a playbook. `ansible/playbooks/gather.yml` reaches the
+host, reads it, writes the document, and then hands it straight back to the verb above:
+
+```
+ansible-playbook ansible/playbooks/gather.yml -l db-01.example.invalid
+```
+
+The host below is a real one — a container the role went and read during the test run that
+produced this page, committed as it came off the wire. It is not a fixture somebody wrote
+to make a point:
+
+```
+basewright gather --facts test/fixtures/hosts/collected.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-collected-dark.svg">
+  <img alt="basewright gather summarising a host the collecting playbook actually read"
+       src="docs/assets/cli-collected-light.svg" width="760">
+</picture>
+
+The playbook is the entry point and the CLI never reaches a machine — not
+`basewright gather --host db-01` with Ansible underneath it, which is what most tools in
+this space do:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/verb-pipeline-dark.svg">
+  <img alt="Semaphore runs the playbook, the playbook reads the host and writes facts.json, and the CLI reads that document"
+       src="docs/assets/verb-pipeline-light.svg" width="940">
+</picture>
+
+That split is the reason the deciding half stays a pure function of a document: it has no
+connection handling, no inventory, no host key policy, and its tests need no network. The
+argument, including the case for the obvious alternative, is in
+[ADR-0020](docs/adr/0020-the-playbook-is-the-entry-point.md).
 
 `preflight` puts twenty engine-independent rules, and every rule the profile adds, to that
 host. A refusal is a first-class outcome, so it is an answer rather than an error: it names
@@ -387,14 +420,20 @@ make install       # install the package and development dependencies
 make lint          # ruff, mypy, yamllint
 make test          # pytest, unit and golden suites, with coverage
 make schema        # validate every profile against the profile JSON Schema
-make guard         # fail if an engine name leaks into the core
+make guard         # fail if an engine name leaks into the core or a shared role
 make assets        # regenerate the diagrams and terminal captures in docs/assets/
 make assets-check  # fail if a committed image is stale
 make golden        # regenerate the golden plans, then read the diff
 make golden-check  # fail if a committed golden plan is stale
-make molecule      # run the Ansible role tests in containers (slow)
+make ansible-lint  # lint every playbook, role and scenario
+make molecule      # run the role tests against real containers (slow, needs Docker)
 make all           # everything CI runs on a pull request, except molecule
 ```
+
+`make molecule` builds a container per platform, brings systemd up inside it and runs the
+collecting role against it for real. That is slower than the rest of the suite put together
+and it is the only thing here that proves the collector and a machine still agree, so it
+runs on every pull request rather than on a schedule.
 
 One command is worth knowing on its own, because it is what a profile author runs:
 
@@ -412,13 +451,13 @@ committed — a stale picture fails the build the way a stale test does.
 
 ## Architecture decisions
 
-Nineteen decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+Twenty decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
 it, what it costs, and the alternatives that were rejected. The four that shape everything
 else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The nineteen decision records, grouped by the question each one answers"
+  <img alt="The twenty decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 
@@ -449,18 +488,20 @@ boundaries that keep the scope finishable —
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete   |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | not started |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | in progress |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, plan storage               | not started |
 | **Phase C**    | A second engine, proving the core needed no changes         | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
 | **Phase E**    | Audit trail, plan diff against a live host, signed releases | not started |
 
 Foundation is complete and it closes with `verify` unbuilt, which is worth stating plainly
-rather than leaving to be discovered. Verify reads a live instance, reaching a live instance
-runs over SSH, and that is Ansible's half of the split — so it could not have been built
-here. It exists as a verb, it exits `69`, and it says which page to read.
+rather than leaving to be discovered. Verify reads a live instance and compares it to the
+plan it came from, so it needs an instance to exist — which is the end of Phase A, not the
+start of it. It exists as a verb, it exits `69`, and it says which page to read.
 
-Phase A is blocked on information rather than on code. Seven conventions have to come from
+Phase A has started with the half of it that needs nothing from anybody: `gather` now reads
+a real host, because collecting facts is engine-independent. Everything after that is
+blocked on information rather than on code. Seven conventions have to come from
 the estate before a first engine profile can ship — path layout, service account, locale,
 authentication rules, the minimum resources a production instance may run on, the OS
 families actually in use, and the port convention. The minimums become block thresholds

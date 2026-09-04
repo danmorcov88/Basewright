@@ -13,10 +13,10 @@ help:  ## Show this help
 
 .PHONY: install
 install:  ## Install the package and development dependencies
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(PYTHON) -m pip install -e ".[dev,ansible]"
 
 .PHONY: lint
-lint: ruff mypy yamllint  ## Run every static check
+lint: ruff mypy yamllint ansible-lint  ## Run every static check
 
 .PHONY: ruff
 ruff:  ## Lint and format-check the Python core
@@ -65,9 +65,13 @@ golden:  ## Regenerate the golden plans, then read the diff -- it is the review
 golden-check:  ## Fail if a committed golden plan is stale
 	$(PYTHON) tools/render_goldens.py --check
 
+.PHONY: ansible-lint
+ansible-lint:  ## Lint every playbook, role and scenario
+	ANSIBLE_CONFIG=$(CURDIR)/ansible.cfg $(PYTHON) -m ansiblelint
+
 .PHONY: molecule
-molecule:  ## Run the Ansible role tests in containers (slow)
-	$(PYTHON) -m molecule test
+molecule:  ## Run the role tests against real containers (slow, needs Docker)
+	MOLECULE_GLOB="test/molecule/*/molecule.yml" ANSIBLE_CONFIG=$(CURDIR)/ansible.cfg $(PYTHON) -m molecule test
 
 .PHONY: all
 all: lint test assets-check golden-check  ## Everything CI runs on a pull request, except molecule

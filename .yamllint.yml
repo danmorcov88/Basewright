@@ -14,6 +14,16 @@ rules:
     max-spaces-inside: 1
   document-start:
     present: true
+  # A file mode written as 0640 is the integer 416, and YAML will not tell you. Both forms
+  # are forbidden so that a mode is always a quoted string, which is the only spelling that
+  # means what it looks like.
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  # Ansible's own linter reads this file, and it requires this rule off. Indented comments
+  # inside a task are how the reasoning behind a task gets written down next to it, which
+  # matters more here than the alignment does.
+  comments-indentation: false
 
 ignore: |
   .venv/
