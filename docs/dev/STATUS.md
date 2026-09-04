@@ -10,7 +10,7 @@ Last reviewed: 2026-09-04.
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | A1 and A2 done, A3 and A4 open |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | A1, A2, A3 done; A4 open |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
@@ -23,7 +23,7 @@ Last reviewed: 2026-09-04.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0022           | done        |
+| Architecture decision records 0001–0023           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
@@ -46,6 +46,7 @@ Last reviewed: 2026-09-04.
 | Report rendering for a plan, human and JSON       | done        |
 | Reading a plan back, and checking it is intact    | done        |
 | Exit codes, as a documented and tested set        | done        |
+| `apply`, and the roles that execute a plan        | done        |
 | `verify`                                          | Phase A     |
 
 ## Foundation closes with a verb that is not built
@@ -148,6 +149,102 @@ device reports itself non-rotational only when everything beneath it is, so read
 is reading the answer for the disks under it. The sample this is tested against is a real
 one, off a real volume group over a loop device.
 
+## Applying a plan
+
+`apply` is a playbook, not a verb of the CLI, for the same reason `gather` is (ADR-0020).
+It takes one input -- the plan -- and there is no second one. Four things have to be true
+before it touches anything: the plan is a plan and this build understands its contract, it
+has not been edited since somebody approved it, the host is still the machine it was built
+from, and its warnings have been acknowledged.
+
+The first two are one check, and it is the tool that made the plan doing it: `plan --from`
+validates the document against the frozen contract and recomputes the digest its name is
+taken over. A plan of a version this build does not implement and a plan somebody edited
+are both refused there rather than by a second opinion written in YAML.
+
+What is worth knowing about the rest:
+
+- **The phases run in the order the plan lists its own changes.** `changes` is the list
+  somebody read and approved, so executing it in a different order would be doing something
+  other than what was approved. The shared role and the engine's role therefore interleave
+  rather than running one after the other, and each is entered per phase. That was found by
+  running it: a profile whose vendor package makes the service account -- which is most of
+  them -- cannot have its directories owned before the packages are installed.
+- **The engine's role is the only place the engine's name appears.**
+  `ansible/roles/postgresql/` knows that a locale and an encoding are arguments to
+  `pg_createcluster`, that a cluster has a start policy, and that a superuser has a password
+  set over a local socket. `ansible/roles/common/` knows about accounts, directories and
+  host settings, and nothing else. The playbook reads the engine out of the plan.
+- **Apply reads the plan and one other thing: a template, by the name the plan gives it.**
+  That is the whole exception, it is a file rather than a value, and every value poured into
+  it comes from the plan (ADR-0022). `test/unit/test_apply_reads_the_plan.py` reads the task
+  files and fails on a second one.
+- **Nothing that handles a password is ever loud.** Ansible logs its own arguments, so a
+  secret leaks not because somebody printed one but because nobody said not to. The
+  statement that sets it goes in over stdin, dollar-quoted so there is nothing to escape,
+  and a test asserts that every task touching the value is `no_log` and that none of them
+  puts it in argv.
+- **The secret store is a seam.** Semaphore's own store is the real target and arrives with
+  the Semaphore templates in Phase B; a container needs one now. So the sink is chosen by a
+  variable, there is one implementation -- a file on the control node, mode 0600, at the
+  location the plan names -- and the second is a file beside the first rather than an edit
+  to everything that calls it.
+- **The packaging is told not to make a cluster nobody planned.** Installing the Debian
+  server package creates a cluster of its own, with the locale, encoding and data directory
+  the packaging chose. Since apply is never destructive there would be no putting that right
+  afterwards, so a drop-in in `createcluster.d` turns it off before anything is installed.
+- **initdb owns the inside of its data directory.** The shared layout phase creates every
+  path the plan names, and on this engine one of them -- the write-ahead log, at the
+  upstream default -- is inside the data directory, which initdb requires to be empty. The
+  engine's role takes the empty placeholder away again immediately before, with `rmdir`
+  rather than a recursive removal: `rmdir` refuses a directory with anything at all in it,
+  so what was made minutes ago goes and anything holding data is left for initdb to refuse
+  by name.
+- **Idempotence is in the molecule sequence**, unlike the collecting scenario where it was
+  deliberately dropped. A second run of the same plan reports zero changes, and that is the
+  promise apply makes. The password is the interesting case: it is generated once by the
+  store and read back on every run after, because rolling it would lock out whoever was
+  given the first one -- and the statement that sets it runs only when the store had
+  nothing.
+- **The plan is produced in the scenario's prepare step rather than its converge step.** A
+  plan is an input to apply, so making one is setting up the fixture; and a second plan
+  against a host that now runs an instance would be refused by the conflict rule, correctly,
+  so a converge that planned would fail its own idempotence check for the right reason.
+- **A container is not a server, and its mount table is the difference that matters.**
+  Ansible reads /etc/mtab and skips any line whose device is not a path, so a container's
+  `overlay / overlay` is never reported -- which means every planned path is on no
+  filesystem the host admits to having, and a blocking rule refuses the plan. That is the
+  rule working. The scenario therefore makes the filesystems real: sparse images, looped and
+  formatted, mounted where the plan places things, sized above the profile's floors so they
+  clear them on any machine rather than on the ones that happen to have room.
+
+### Drift, and what it cannot see
+
+Apply re-reads the host and refuses one the plan no longer describes
+([ADR-0023](../adr/0023-drift-is-measured-against-the-plan.md)). Identity -- the operating
+system, the architecture, a filesystem's type and whether it spins -- must match exactly.
+Capacity -- cores and memory -- drifts when it shrinks and not when it grows, because a host
+that has been given more is still one this plan fits. A filesystem the plan placed a path on
+and the host no longer reports is the loudest of them.
+
+**Free space is deliberately not compared**, and it is the interesting omission: apply
+consumes it, so a second run comparing against the plan's numbers would report its own work
+as drift and refuse to be idempotent. It is checked once, by a blocking gate, before the
+plan exists.
+
+**Apply cannot notice an engine somebody else installed since the plan was made, or a port
+taken since.** Neither is in the plan's host section, and apply reads the plan and nothing
+else. Both are real gaps rather than oversights, they are named in `UNCHECKED` in
+`basewright/drift.py`, and they are found later and less kindly -- the packaging refuses, or
+the service fails to bind.
+
+### The one job that needs the internet
+
+Everything else in CI runs offline on purpose. The apply scenario installs from the vendor
+repository, which is what the whole tool is for, so it cannot. That is stated rather than
+discovered: the collecting scenario proves its refusal case against a name reserved by
+RFC 2606 precisely so that only one job depends on reaching anything.
+
 ## Exit codes
 
 Four, closed, and documented in [ADR-0019](../adr/0019-exit-codes-are-the-contract.md):
@@ -163,14 +260,17 @@ rather than changing it.
 
 ## Not yet wired into CI
 
-These belong in the pipeline described in the brief and are added when there is something
-for them to check:
+Both molecule scenarios run on every pull request now, and the second takes a bare container
+from nothing to a running instance and then over it again. What is left:
 
-- `molecule`, for an engine role — the collecting role has a scenario and it runs on every
-  pull request. An engine's own role has nothing to test yet.
-- Quickstart output assertions — the commands the README shows are held against the
-  commands that produced its pictures, which is as much as can be asserted while there is
-  no engine to provision. The rest waits for a working end-to-end path.
+- Quickstart output assertions. The commands the README shows are held against the commands
+  that produced its pictures, and that is as far as it goes: an apply prints package
+  versions and moments, so it is proved by the scenario in CI rather than by an image. The
+  README says so rather than showing a picture of it.
+- The verify half of the loop. The apply scenario asserts a handful of things about the
+  running instance -- its unit, its version, its parameters, the data directory, encoding
+  and locale it was created with -- which is a scenario checking its own work rather than
+  the product doing it. `verify` is A4 and it is what turns those assertions into a report.
 
 ## The first profile, and the seven values it had to assume
 
@@ -222,9 +322,13 @@ line in `layout.yml` changes and the warning stops.
 - **The support matrix names three versions and their end-of-life dates.** They are
   upstream's published dates and they need re-reading whenever a release lands; a test
   fails the build if any of them has passed.
-- **The templates are written and nothing consumes them yet.** `apply` is A3. They are here
-  because the loader requires every named template to exist, and because writing them after
-  seeing what apply happened to do would not be a specification.
+- **The templates are consumed now, and two things about them changed on the way.** They
+  are rendered with the plan under a single name, `plan`, rather than with its sections
+  spread across several -- one variable a template cannot reach past, and no chance of
+  colliding with a name Ansible already uses. And the tuning template learned to write a
+  byte count as a byte count: a plan records `8589934592` because that is the one spelling
+  two steps can compare, and this engine has to be told the number is already in bytes
+  rather than in whatever unit it would otherwise assume for the parameter.
 
 ## Known gaps
 

@@ -116,6 +116,7 @@
   delegate_to: localhost
   become: false
   run_once: true
+  when: gather_write | bool
 
 - name: Write what the host reported
   ansible.builtin.template:
@@ -124,6 +125,7 @@
     mode: "0640"
   delegate_to: localhost
   become: false
+  when: gather_write | bool
 
 - name: Read the document back through the contract, and fail if it does not hold up
   ansible.builtin.command: >-
@@ -132,11 +134,14 @@
   delegate_to: localhost
   become: false
   register: gather_rendering
-  when: gather_validate | bool
+  when:
+    - gather_write | bool
+    - gather_validate | bool
 
 - name: Say what the host turned out to be
   ansible.builtin.debug:
     msg: "{{ gather_rendering.stdout_lines }}"
   when:
+    - gather_write | bool
     - gather_report | bool
     - gather_validate | bool

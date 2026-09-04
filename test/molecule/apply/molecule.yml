@@ -1,0 +1,47 @@
+---
+# The scenario that proves apply. Idempotence is IN the sequence here, and deliberately so:
+# it was left out of the collecting scenario because a collector records the moment it
+# looked, and there is no equivalent excuse for a step whose whole promise is that running
+# it twice is safe.
+#
+# The plan is produced in prepare rather than in converge, and that is not a detail. A plan
+# is an input to apply, so making one is setting up the fixture; and a second plan against
+# a host that now has an instance on it would be refused by the conflict rule, correctly --
+# so a converge that planned would fail its own idempotence check for the right reason.
+#
+# Molecule builds its own Ansible configuration and does not read the one at the repository
+# root, so the two paths that make this repository's layout work are given here as well.
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/ansible/roles
+    ANSIBLE_FILTER_PLUGINS: ${MOLECULE_PROJECT_DIRECTORY}/ansible/plugins/filter
+
+driver:
+  name: docker
+platforms:
+  - name: apply-ubuntu2404
+    image: ubuntu:24.04
+    pre_build_image: false
+    privileged: true
+    cgroupns_mode: host
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp

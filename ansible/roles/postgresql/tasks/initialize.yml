@@ -1,0 +1,39 @@
+---
+# Creating the cluster: the one thing apply does that it cannot later do differently.
+# Everything it is created with comes out of the plan's initialization section, which
+# exists precisely because this step cannot be repeated (ADR-0022).
+
+- name: Find out whether this cluster already exists
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_path }}/PG_VERSION"
+  become: true
+  register: postgresql_cluster
+
+# The shared layout phase creates every path the plan names, because every path the plan
+# names has to exist with the owner and mode it names. One of them, on this engine, is
+# inside the data directory -- and initdb requires that directory to be empty, because it
+# makes what belongs in it. So the empty placeholder is taken away again, immediately
+# before, and only while there is no cluster.
+#
+# `rmdir` rather than a recursive removal, deliberately. It refuses a directory with
+# anything at all in it, which is the guarantee: what was made minutes ago goes, and
+# anything holding data is left for initdb to refuse by name.
+- name: Let initdb make the directories it owns the inside of
+  ansible.builtin.command:
+    argv: [rmdir, "{{ item }}"]
+  loop: "{{ postgresql_paths_inside_data }}"
+  become: true
+  when: not postgresql_cluster.stat.exists
+  changed_when: true
+  failed_when: false
+
+- name: Create the cluster, once and for the life of it
+  ansible.builtin.command:
+    argv: "{{ postgresql_create_argv }}"
+  become: true
+  # The one thing here that is not idempotent by nature, and the one that must never happen
+  # twice. pg_createcluster refuses an existing data directory, and a second run of this
+  # role has to report no change rather than an error -- so it is guarded on whether the
+  # cluster is there, which is a question about the host rather than about this run.
+  when: not postgresql_cluster.stat.exists
+  changed_when: true

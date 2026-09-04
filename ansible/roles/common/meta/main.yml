@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: common
+  author: Dan Morcov
+  description: >-
+    The parts of applying a plan that are the same whatever is being provisioned: the
+    account the instance runs as, the directories it lives in, and the host settings it
+    needs changed.
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags: [provisioning, database]
+dependencies: []

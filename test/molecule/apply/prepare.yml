@@ -1,0 +1,100 @@
+---
+# Making the container into something a plan can be built for, and then building one.
+#
+# A container is not a server, and the difference that matters here is its mount table.
+# Ansible reads /etc/mtab and skips any line whose device is not a path, so a container's
+# `overlay / overlay` is never reported -- which means every planned path is on no
+# filesystem the host admits to having, and a blocking rule refuses the plan. That is the
+# rule working: a path on a filesystem nobody can describe is a path nobody can promise
+# has room.
+#
+# So the filesystems are made real. Sparse files, looped and formatted, mounted where the
+# plan places things: real devices, real sizes, and free space that clears the profile's
+# floors on any machine this runs on rather than on the ones that happen to have room.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+
+  vars:
+    # Sized above the floors the profile declares, and sparse, so the apparent size is what
+    # a rule reads and the real cost is a few kilobytes.
+    filesystems:
+      - { name: data, path: /var/lib/postgresql, size: 30G }
+      - { name: log, path: /var/log/postgresql, size: 5G }
+      - { name: backup, path: /backup, size: 60G }
+
+  tasks:
+    - name: Give the target what it needs to be read and provisioned
+      ansible.builtin.raw: >-
+        apt-get update -qq &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq
+        python3 iproute2 locales sudo e2fsprogs mount ca-certificates gnupg
+      changed_when: false
+
+    - name: Give the target the locale the instance is created with
+      ansible.builtin.raw: locale-gen en_US.UTF-8
+      changed_when: false
+
+    - name: Make somewhere for the filesystems to live
+      ansible.builtin.file:
+        path: /srv/basewright-images
+        state: directory
+        mode: "0700"
+
+    - name: Create, format and mount each of them where the plan will place things
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - >-
+            truncate --size {{ item.size }} {{ image }}
+            && mkfs.ext4 -q -F {{ image }}
+            && mkdir -p {{ item.path }}
+            && mount -o loop {{ image }} {{ item.path }}
+      vars:
+        image: /srv/basewright-images/{{ item.name }}.img
+      loop: "{{ filesystems }}"
+      loop_control:
+        label: "{{ item.path }} ({{ item.size }})"
+      changed_when: true
+
+# The plan is an input to apply, so producing one is part of setting the fixture up. It is
+# also the only place it can go: a plan made after apply has run would be refused by the
+# rule that blocks a host already running the thing being provisioned, which is that rule
+# doing its job.
+- name: Build the plan this scenario applies
+  hosts: all
+  gather_facts: true
+
+  vars:
+    facts_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"
+    project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+
+  tasks:
+    - name: Read what the host actually is
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_output_dir: "{{ facts_dir }}"
+        gather_engine: postgresql
+        gather_report: false
+
+    - name: Plan an instance for it
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli plan
+          --facts {{ facts_dir }}/{{ inventory_hostname }}.json
+          --engine postgresql --json
+        chdir: "{{ project }}"
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      register: planned
+
+    - name: Keep it where apply will read it
+      ansible.builtin.copy:
+        content: "{{ planned.stdout }}"
+        dest: "{{ facts_dir }}/plan.json"
+        mode: "0640"
+      delegate_to: localhost
+      become: false

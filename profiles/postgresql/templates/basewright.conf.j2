@@ -1,8 +1,12 @@
-# Managed by Basewright. Generated from plan {{ plan_id }} on {{ generated_at }}.
+# Managed by Basewright. Generated from plan {{ plan.plan_id }} on {{ plan.generated_at }}.
 #
 # A drop-in, read after the packaged postgresql.conf, which is left alone. Every value
 # below carries the rule that produced it: change the profile, not this file, or the next
 # apply will put it back and the plan will stop describing this machine.
-{% for parameter in parameters %}
-{{ parameter.parameter }} = {{ parameter.value }}  # {{ parameter.rule }}
+#
+# A plan records a count of bytes, because that is the one spelling two steps can compare.
+# The B suffix is how this engine is told the number is already in bytes rather than in
+# whatever unit it would otherwise assume for the parameter.
+{% for parameter in plan.parameters %}
+{{ parameter.parameter }} = {{ parameter.value }}{{ 'B' if parameter.unit == 'bytes' else '' }}  # {{ parameter.rule }}
 {% endfor %}

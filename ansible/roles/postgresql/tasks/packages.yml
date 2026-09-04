@@ -1,0 +1,70 @@
+---
+# The engine's own role, and the one place in this repository where the word PostgreSQL is
+# supposed to appear. Everything it does comes out of the plan: the repository, the package
+# names, the service unit, the paths, the settings the cluster is created with, the files
+# it writes. Nothing here reads a profile and nothing here decides anything.
+#
+# What it does know is what those values are *for* -- that a locale and an encoding are
+# arguments to pg_createcluster, that a cluster has a start policy, that a superuser has a
+# password set over a local socket. That is exactly the knowledge an engine's role exists
+# to hold, and exactly the knowledge the core must never acquire.
+#
+# The tasks are split by phase, and the playbook runs the phases in the order the plan
+# lists its own changes in. An engine's role is entered once per phase rather than once,
+# because the shared phases fall between these.
+
+- name: Trust the key the vendor signs its packages with
+  ansible.builtin.get_url:
+    url: "{{ basewright_plan.packages.repository.key_url }}"
+    dest: "{{ postgresql_keyring }}"
+    mode: "0644"
+  become: true
+
+- name: Add the repository the packages come from
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by={{ postgresql_keyring }}]
+      {{ basewright_plan.packages.repository.url }}
+      {{ basewright_plan.packages.repository.suite }}
+      {{ basewright_plan.packages.repository.components | join(' ') }}
+    filename: basewright-{{ basewright_plan.packages.repository.name }}
+    state: present
+    update_cache: true
+  become: true
+
+# The Debian packaging creates a cluster of its own when the server package is installed,
+# with the locale, encoding and data directory the packaging chose. That would leave a
+# running instance nobody planned, sitting where the planned one is meant to go -- and
+# since apply is never destructive, there would be no putting it right afterwards. So the
+# packaging is told not to, through the drop-in directory it reads for exactly this, before
+# anything is installed. Nothing existing is changed: the file is ours and it is new.
+- name: Make the directory the packaging reads that instruction from
+  ansible.builtin.file:
+    path: /etc/postgresql-common/createcluster.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Tell the packaging not to create a cluster nobody planned
+  ansible.builtin.copy:
+    content: |
+      # Managed by Basewright.
+      #
+      # The cluster this host runs is created from a plan, with the locale, encoding and
+      # data directory that plan names and a person approved. A cluster made by the
+      # packaging instead would be a running instance nobody decided the shape of.
+      create_main_cluster = false
+    dest: /etc/postgresql-common/createcluster.d/basewright.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Install what the plan says to install
+  ansible.builtin.apt:
+    name: "{{ basewright_plan.packages.install }}"
+    state: present
+    update_cache: false
+  become: true
