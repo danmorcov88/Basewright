@@ -155,14 +155,12 @@ real value, from the rule that produced it to the line it occupies in a plan:
 
 **The whole loop, and CI runs it on every pull request.** A bare `ubuntu:24.04` container is
 read, gated, planned for, provisioned from its own plan, provisioned again with nothing left
-to do, and then asked whether it is what the plan promised. Every command below is run
-against documents committed under `test/`, which is what makes each one copy-pasteable and
-each picture reproducible.
+to do, and then asked whether it is what the plan promised.
 
-Every command below is copy-pasteable after `make install`, and every one of them is the
-command that produced the picture underneath it: `tools/render_assets.py` runs them to make
-the images, and a test holds the text in this file against the commands it ran. Neither can
-drift from the other.
+Every command below is copy-pasteable after `make install`, runs against documents committed
+under `test/`, and is the command that produced the picture underneath it:
+`tools/render_assets.py` runs them to make the images, and a test holds the text in this file
+against the commands it ran. Neither can drift from the other.
 
 `gather` reads what a host reported and normalizes it into the model every rule is written
 against:

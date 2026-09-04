@@ -55,6 +55,19 @@ Every verb in §4 of the brief is built, and the last of them is the one that ma
 four worth anything: `apply` promised something, and `verify` reads the instance back and
 says whether the promise held.
 
+What CI does on every pull request is the whole of it. A bare `ubuntu:24.04` container is
+read, gated, planned for, provisioned from its own plan, provisioned again with nothing left
+to do, and verified. Then the scenario changes a parameter on the running instance behind
+the plan's back and insists the tool goes red -- exactly `2`, and naming the parameter --
+because a verify that only ever passes has been shown to agree with a correct instance and
+nothing more.
+
+Two things are still true and worth saying in the same breath. **The numbers in the profile
+are upstream defaults rather than the estate's policy**, all seven of them, and the table
+further down says which is which. And **the interface is missing**: `deploy/semaphore/` is
+empty, so the four templates of §12 that would let anybody run any of this without a shell
+are Phase B.
+
 ## Collecting from a live host
 
 `gather` reads a real machine now. `ansible/playbooks/gather.yml` reaches the host, the
@@ -316,6 +329,27 @@ What is worth knowing about it:
   than an edit to the drop-in on purpose: it is what somebody in a hurry actually does, it
   survives a reload, and it is read after every configuration file, so it is the exact
   shape of the drift this exists to catch.
+
+### What a real container taught this one
+
+Two defects, both in the half that had to know the engine, and neither of a shape a fixture
+could have had -- because a fixture is written by somebody who already knows what the answer
+should be.
+
+**A JSON string is not a SQL string literal.** The query that reads the planned parameters
+back builds a list of their names, and the first version quoted them with `to_json` on the
+reasoning that a JSON string is a quoted string. It is, everywhere except SQL, where double
+quotes are an identifier -- so `"shared_buffers"` was a column the query did not have and
+the cluster said so. What is worth recording is not the mistake but the report it produced:
+the connection check failed with the server's own message, seven checks that needed the
+connection came back unobserved, and the verdict named the one thing to fix. The check
+being built was the check that found the bug in it.
+
+**A start policy is a file with eight lines of explanation above it.** This packaging keeps
+the cluster's start policy in `start.conf`, and reading the file and calling it the value
+produced a failure report with the entire comment block quoted inside it -- correctly, since
+the plan says `auto` and a paragraph of explanation is not `auto`. It is the first line that
+is neither blank nor a comment.
 
 ### What verify does not prove
 
