@@ -165,13 +165,18 @@
         "summary": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["pass", "warn", "block"],
+          "required": ["pass", "warn", "block", "skip"],
           "properties": {
             "pass": { "type": "integer", "minimum": 0 },
             "warn": { "type": "integer", "minimum": 0 },
             "block": {
               "const": 0,
               "description": "A block produces a refusal, never a plan. A plan carrying a block is not a thing that can exist, so the contract says so rather than leaving it to a convention."
+            },
+            "skip": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Rules that could not be evaluated, because the fact they read was not collected or because they did not apply to this host. Counted separately from a pass: a rule nobody could run is not a rule that agreed."
             }
           }
         },

@@ -63,6 +63,16 @@
       },
       "description": "The locales present on the host. An engine initialized with a locale the machine does not have fails at the last possible moment, so this is checked at the first."
     },
+    "reachable_repositories": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^https?://",
+        "description": "A package repository URL the host answered from, spelled exactly as the profile spells it, so that the two can be compared rather than approximately matched."
+      },
+      "description": "The package repositories the host proved it can reach. Which ones were tried comes from the profile, so this is the one part of the facts that is collected knowing what is being provisioned. Absent means nobody asked, and the rule that reads it is skipped; present and empty means the host was asked and reached nothing, which is a refusal."
+    },
     "privileges": { "$ref": "#/$defs/privileges" },
     "time_sync": { "$ref": "#/$defs/time_sync" },
     "kernel": { "$ref": "#/$defs/kernel" },

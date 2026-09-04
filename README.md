@@ -193,7 +193,28 @@ against:
 </picture>
 
 Collecting those facts from a live machine runs over SSH, which is Ansible's half of the
-split and is not built yet. The verbs that follow are still a promise, and they say so:
+split and is not built yet.
+
+`preflight` puts twenty engine-independent rules, and every rule the profile adds, to that
+host. A refusal is a first-class outcome, so it is an answer rather than an error: it names
+the rule, what was found, what was required, and what would have to change.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/preflight-refused-dark.svg">
+  <img alt="basewright preflight refusing a host, naming four blocking rules and what each one found"
+       src="docs/assets/preflight-refused-light.svg" width="840">
+</picture>
+
+There is no flag that turns any of that into a plan. A host that passes still reports what
+it is not happy about, and those warnings are acknowledged before apply will run:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/preflight-passed-dark.svg">
+  <img alt="basewright preflight passing a host, with four warnings to acknowledge"
+       src="docs/assets/preflight-passed-light.svg" width="840">
+</picture>
+
+The verbs that follow are still a promise, and they say so:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-plan-dark.svg">
@@ -340,7 +361,7 @@ else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The thirteen decision records, grouped by the question each one answers"
+  <img alt="The fifteen decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 

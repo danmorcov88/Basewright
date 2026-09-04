@@ -170,6 +170,7 @@ class HostFacts:
     services: tuple[InstalledService, ...]
     locales: tuple[str, ...]
     privileges: Privileges
+    reachable_repositories: tuple[str, ...] | None = None
     time_sync: TimeSync | None = None
     kernel: KernelSettings | None = None
     firewall: Firewall | None = None
@@ -212,6 +213,18 @@ class HostFacts:
 
     def service_named(self, name: str) -> InstalledService | None:
         return next((service for service in self.services if service.name == name), None)
+
+    def can_reach(self, url: str) -> bool | None:
+        """Whether the host proved it can reach one package repository.
+
+        None means the question was never put to the machine, which is a different answer
+        from no and is reported differently. Nothing else in this model is three-valued,
+        and this is the one fact whose collection depends on knowing what is being
+        provisioned.
+        """
+        if self.reachable_repositories is None:
+            return None
+        return url in self.reachable_repositories
 
     # -------------------------------------------------------------------- rendering
 
