@@ -1,0 +1,93 @@
+BASEWRIGHT PLAN  db-large.invalid
+  generated 2026-01-15T09:30:00Z by basewright 0.1.0 -- plan id abdcc73cde3b
+
+REQUEST
+  engine            exampledb 3  (profile default)
+  environment       production
+  instance          main
+  port              6432
+  profile           exampledb 1.0.0
+
+HOST
+  os                Ubuntu 24.04.1 LTS -- x86_64 -- kernel 6.8.0-45-generic
+  cpu               64 cores
+  memory            512.0 GiB
+  storage           /  82.0 GiB free, ext4, SSD
+                    /var  190.0 GiB free, ext4, SSD
+                    /var/lib  7.0 TiB free, xfs, SSD
+                    /var/lib/basewright  15.0 TiB free, xfs, SSD
+                    /var/log  480.0 GiB free, ext4, SSD
+                    /backup  60.0 TiB free, xfs, rotational
+                    /mnt/readonly  0 B free, iso9660, rotational
+  time sync         systemd-timesyncd, synchronized
+
+PREFLIGHT                                      21 pass -- 1 warn -- 0 block -- 1 skipped
+  WARN  disk.separate_mounts  journal and data both live on /var/lib/basewright
+                              -> Give them separate filesystems if the workload warrants
+                                 it. Sharing costs failure isolation and makes one path
+                                 able to fill the other; it is supported, and this is
+                                 the record that it was chosen rather than overlooked.
+  SKIP  repo.reachable        the host did not report whether it can reach exampledb
+                              -> Reaching a repository is proved from the host, which
+                                 happens when the facts are collected over SSH. Until
+                                 then this is unanswered rather than assumed, and the
+                                 first task of apply is where it would otherwise be
+                                 discovered.
+
+PARAMETERS
+  cache_size            8.0 GiB     exampledb.cache_size
+    held at its maximum
+    -> A quarter of memory is the standard starting point for a shared cache, and it is
+       capped because past that point the operating system page cache is the better
+       place for the memory: it can be reclaimed under pressure, and this cannot.
+  work_memory           327.7 MiB   exampledb.work_memory
+    -> This is charged per sort or hash node, not per connection, and a single query can
+       hold several at once. The division by two is the allowance for that. It is
+       written above the rule it depends on deliberately: the order values are computed
+       in comes from what they read, not from where they sit in this file.
+  max_connections       200         exampledb.max_connections
+    -> A fixed, conservative default. Above four hundred the answer is a connection
+       pooler rather than a larger number here, because the memory cost is paid per
+       backend.
+  parallel_workers      32          exampledb.parallel_workers
+    held at its maximum; above the 16 this rule advises
+    -> One worker per core is the most the machine can run without them queueing behind
+       each other. Past sixteen the coordination costs more than the parallelism returns
+       on most workloads, and past thirty-two it stops returning anything at all.
+  random_page_cost      1.1         exampledb.random_page_cost
+    -> On solid state storage a random read costs very nearly what a sequential one
+       does, and a planner told otherwise will avoid indexes it should be using.
+  checkpoint_interval   300 s       exampledb.checkpoint_interval
+    -> Longer intervals mean less write amplification and a longer recovery after a
+       crash. Five minutes is the point where most workloads stop noticing either.
+
+LAYOUT
+  data      /var/lib/basewright/exampledb/main/data     0700  exampledb:exampledb
+  journal   /var/lib/basewright/exampledb/main/journal  0700  exampledb:exampledb
+  log       /var/log/basewright/exampledb/main          0750  exampledb:exampledb
+  backup    /backup/exampledb/main                      0750  exampledb:exampledb
+
+  Owned by exampledb, shell /usr/sbin/nologin, created if missing. The filesystem
+  carrying each path is in the artifact, and preflight is where two paths sharing one is
+  reported.
+
+CHANGES apply WOULD MAKE
+  + add package repository exampledb (https://packages.example.invalid/apt)
+  + install exampledb-server-3, exampledb-client-3
+  + create service account exampledb, unless it already exists
+  + create 4 directories
+  + write /etc/basewright/exampledb/main/exampledb.conf (6 parameters)
+  + write /etc/basewright/exampledb/main/access.conf
+  + enable and start exampledb@3-main
+
+  Nothing existing is removed, and no file is overwritten without a timestamped copy
+  left beside it.
+
+SECRETS
+  administrative account password
+    stored as basewright/db-large.invalid/exampledb/main/admin
+
+  Generated at apply time and written once to the secret store. This plan names where
+  each one lives and has nowhere to put a value.
+
+RESULT   plan is applicable -- 2 warnings require acknowledgement before apply will run.

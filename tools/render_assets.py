@@ -10,6 +10,13 @@ consequences follow, and both are the point:
   keeping what it printed. Nothing here draws a screenshot of behaviour that does not
   exist yet; a verb that is not built renders as a verb that is not built.
 
+  One consequence is worth naming. A plan produced from facts records the moment it was
+  produced, so capturing that would put a clock in a file compared byte for byte. The
+  capture below therefore renders a plan that already exists, which is a real command
+  with a real answer. That the pipeline still produces the plan correctly is checked by
+  rendering the golden plans twice and comparing the bytes, which is a better proof than
+  a picture of one run.
+
 Output is deterministic: no timestamps, no random ids, no locale-dependent formatting.
 Themes are rendered as separate light and dark files so the documentation can pick one
 with `<picture>` rather than shipping an image that is unreadable on half the screens
@@ -920,14 +927,20 @@ def build() -> dict[Path, str]:
     assets: dict[Path, str] = {}
 
     refused = "test/fixtures/profiles/malformed"
+    written = "test/golden/plan/typical.json"
+    edited = "test/fixtures/plan/edited.json"
     facts = "test/fixtures/hosts/typical.json"
     crowded = "test/fixtures/hosts/crowded.json"
     profile = "test/fixtures/profiles/exampledb"
     captures: dict[str, tuple[str, list[str]]] = {
         "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
-        "cli-plan": (
-            "basewright plan",
-            capture(["basewright.cli", "plan", "--facts", facts, "--profile", profile]),
+        "plan-rendered": (
+            "the plan, as the person approving it reads it",
+            capture(["basewright.cli", "plan", "--from", written]),
+        ),
+        "plan-edited": (
+            "a plan whose name no longer matches what it says",
+            capture(["basewright.cli", "plan", "--from", edited]),
         ),
         "cli-gather": (
             "basewright gather",

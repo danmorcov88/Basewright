@@ -28,6 +28,15 @@ def goldens() -> dict[Path, str]:
     return build()
 
 
+def under(goldens: dict[Path, str], directory: str) -> set[str]:
+    """The names written into one of the golden directories.
+
+    The renderer also writes one file outside them -- a plan that is wrong on purpose --
+    so a check that means "the goldens" has to say which ones it means.
+    """
+    return {path.stem for path in goldens if path.parent == GOLDEN / directory}
+
+
 def test_the_committed_goldens_are_what_the_pipeline_produces(goldens: dict[Path, str]) -> None:
     """Regenerate with tools/render_goldens.py, then read the diff. That is the review."""
     stale = [
@@ -41,9 +50,11 @@ def test_the_committed_goldens_are_what_the_pipeline_produces(goldens: dict[Path
 
 def test_nothing_is_committed_that_no_fixture_produces() -> None:
     """A golden nobody generates any more is a file that agrees with everything for ever."""
-    produced = set(build())
+    produced = {path for path in build() if GOLDEN in path.parents}
     committed = {
-        path for directory in ("plan", "refused") for path in (GOLDEN / directory).glob("*")
+        path
+        for directory in ("plan", "rendered", "refused")
+        for path in (GOLDEN / directory).glob("*")
     }
 
     assert committed == produced
@@ -56,9 +67,17 @@ def test_two_runs_of_the_same_inputs_are_identical(goldens: dict[Path, str]) -> 
 
 def test_every_fixture_host_is_accounted_for(goldens: dict[Path, str]) -> None:
     """A host that quietly stopped being planned would leave the suite passing."""
-    names = {path.stem for path in goldens}
+    names = under(goldens, "plan") | under(goldens, "refused")
 
     assert names == set(FIXTURES)
+
+
+def test_every_plan_that_was_produced_was_also_rendered(goldens: dict[Path, str]) -> None:
+    """The rendering is what a person reads, so it is reviewed by diff like the plan is."""
+    planned = under(goldens, "plan")
+
+    assert planned == under(goldens, "rendered")
+    assert planned
 
 
 def test_every_golden_plan_validates_against_the_contract(goldens: dict[Path, str]) -> None:
@@ -77,6 +96,21 @@ def test_a_refused_host_gets_a_report_rather_than_a_plan(goldens: dict[Path, str
     for path, content in goldens.items():
         if path.parent.name == "refused":
             assert "BLOCK" in content
+
+
+def test_the_tampered_fixture_is_a_plan_that_lies_about_its_name(
+    goldens: dict[Path, str],
+) -> None:
+    """It is generated rather than committed by hand, so it cannot fall behind the plan
+    it is a copy of, and the check that notices an edited plan has something real to
+    notice."""
+    edited = next(path for path in goldens if path.name == "edited.json")
+    document = json.loads(goldens[edited])
+    original = json.loads(goldens[GOLDEN / "plan" / "typical.json"])
+
+    assert GOLDEN not in edited.parents, "a plan that is wrong on purpose is not a golden"
+    assert document["plan_id"] == original["plan_id"]
+    assert document["parameters"][0]["value"] != original["parameters"][0]["value"]
 
 
 def test_every_golden_is_ascii(goldens: dict[Path, str]) -> None:

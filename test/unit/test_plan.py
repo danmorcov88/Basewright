@@ -17,7 +17,7 @@ import pytest
 
 from basewright import __version__
 from basewright.facts import HostFacts, load_facts
-from basewright.planner import PlanError, build_plan, plan_id_for, rendered, summarize
+from basewright.planner import PlanError, build_plan, plan_id_for, rendered
 from basewright.planner.schema import plan_problems
 from basewright.preflight import evaluate
 from basewright.profiles import Profile, load_profile
@@ -217,23 +217,6 @@ def test_the_plan_records_which_tool_made_it(plan: dict[str, Any]) -> None:
 
 
 # -------------------------------------------------------------------------- rendering
-
-
-def test_the_summary_says_what_was_produced_and_that_nothing_moved(
-    plan: dict[str, Any],
-) -> None:
-    summary = summarize(plan)
-
-    assert plan["plan_id"] in summary
-    assert "Nothing on the host was changed" in summary
-    assert "acknowledgement" in summary
-
-
-def test_the_summary_is_ascii_and_fits_a_terminal(plan: dict[str, Any]) -> None:
-    """It is read in a task log and captured into a documentation image on another OS."""
-    for line in summarize(plan).splitlines():
-        assert line.isascii()
-        assert len(line) <= 88
 
 
 def test_the_artifact_ends_with_one_newline(plan: dict[str, Any]) -> None:
