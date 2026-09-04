@@ -112,6 +112,36 @@ jobs:
       - name: Schemas and fixtures
         run: python -m pytest test/unit -k schema -v
 
+  plan:
+    name: Plan determinism
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      # The same facts and the same profiles have to produce the same plan, byte for
+      # byte. Everything else about golden plans rests on this: a committed plan is only
+      # a review mechanism while a diff means a decision changed rather than a run happened.
+      - name: The same inputs twice produce the same bytes
+        run: |
+          python tools/render_goldens.py
+          git diff --exit-code -- test/golden
+          python tools/render_goldens.py
+          git diff --exit-code -- test/golden
+
+      # A change to a sizing rule shows up in the pull request as a diff of the values it
+      # produced on five real machines. A stale golden means that review did not happen.
+      - name: Committed golden plans match what the pipeline produces
+        run: python tools/render_goldens.py --check
+
   assets:
     name: Documentation assets
     runs-on: ubuntu-24.04

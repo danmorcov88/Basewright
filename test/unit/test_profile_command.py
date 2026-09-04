@@ -25,7 +25,7 @@ def test_a_valid_profile_is_reported_in_one_line(capsys: pytest.CaptureFixture[s
     assert code == EXIT_OK
     assert printed.count("\n") == 1
     assert "valid" in printed
-    assert "5 sizing rules" in printed
+    assert "6 sizing rules" in printed
 
 
 def test_an_invalid_profile_is_refused_with_its_report(capsys: pytest.CaptureFixture[str]) -> None:

@@ -20,7 +20,10 @@ from basewright.profiles import Profile, load_profile, profile_directories
 ROOT = Path(__file__).resolve().parents[2]
 PROFILES = ROOT / "profiles"
 FIXTURES = ROOT / "test" / "fixtures" / "profiles"
-PLAN_FIXTURE = ROOT / "test" / "fixtures" / "plan" / "contract-example.json"
+#: The plan the contract is exercised against is a real one, produced by the pipeline and
+#: committed as a golden. A hand-written example would drift from what plan actually emits,
+#: and the drift would be invisible in exactly the direction that matters.
+PLAN_FIXTURE = ROOT / "test" / "golden" / "plan" / "typical.json"
 
 #: Fixture profiles that are meant to be valid. The others are broken deliberately and
 #: are exercised by the loader's own tests.

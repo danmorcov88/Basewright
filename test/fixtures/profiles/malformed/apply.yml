@@ -1,0 +1,11 @@
+---
+engine: malformed
+configuration:
+  # The template is not a Jinja file, so nothing could render it. Naming a file that
+  # cannot be rendered fails halfway through apply otherwise, on somebody else's machine.
+  - id: malformed.server_config
+    template: malformed.conf
+    destination: /etc/basewright/{{ engine }}/{{ instance }}/malformed.conf
+    mode: "0640"
+    carries_parameters: true
+    description: The server configuration, where the sized parameters land.

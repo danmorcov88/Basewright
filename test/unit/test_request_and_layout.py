@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from basewright.layout import LayoutError, resolve_path, resolve_paths
+from basewright.placeholders import PlaceholderError
 from basewright.profiles import load_profile
 from basewright.request import Request, RequestError, resolve_request, supported_version
 
@@ -121,17 +122,17 @@ def test_space_inside_the_braces_is_allowed() -> None:
 
 def test_a_placeholder_nobody_defined_is_an_error() -> None:
     """A directory called '{{ instnace }}' would be created without complaint."""
-    with pytest.raises(LayoutError, match="not a placeholder a path has"):
+    with pytest.raises(PlaceholderError, match="not a placeholder a path has"):
         resolve_path("/opt/{{ instnace }}", request())
 
 
 def test_the_error_lists_the_placeholders_there_are() -> None:
-    with pytest.raises(LayoutError, match="engine, instance, version"):
+    with pytest.raises(PlaceholderError, match="engine, instance, version"):
         resolve_path("/opt/{{ nonsense }}", request())
 
 
 def test_an_unclosed_placeholder_is_an_error() -> None:
-    with pytest.raises(LayoutError, match="was not closed"):
+    with pytest.raises(PlaceholderError, match="was not closed"):
         resolve_path("/opt/{{ engine }", request())
 
 

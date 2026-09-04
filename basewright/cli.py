@@ -18,10 +18,13 @@ from pathlib import Path
 from basewright import __version__
 from basewright.facts import FactsError, HostFacts, load_facts
 from basewright.facts.errors import InvalidFactsError
+from basewright.placeholders import PlaceholderError
+from basewright.planner import PlanError, build_plan, rendered, summarize
 from basewright.preflight import RuleError, document, evaluate
 from basewright.profiles import InvalidProfileError, ProfileError, load_profile
+from basewright.profiles.model import Profile
 from basewright.report.preflight import render_preflight
-from basewright.request import RequestError, resolve_request
+from basewright.request import Request, RequestError, resolve_request
 from basewright.units import render_bytes
 
 #: Everything went as planned.
@@ -70,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     for verb, help_text in VERBS.items():
         sub = subcommands.add_parser(verb, help=help_text, description=help_text)
         sub.add_argument("--facts", metavar="PATH", type=Path, help=_FACTS_HELP)
-        if verb == "preflight":
+        if verb in {"preflight", "plan"}:
             _add_request_arguments(sub)
         sub.add_argument(
             "--json",
@@ -130,6 +133,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.verb == "preflight":
         return preflight(args)
 
+    if args.verb == "plan":
+        return plan(args)
+
     print(
         f"basewright {args.verb}: not built yet -- see docs/dev/STATUS.md for the roadmap.",
         file=sys.stderr,
@@ -165,9 +171,72 @@ def gather(facts: Path | None, *, as_json: bool) -> int:
 
 def preflight(args: argparse.Namespace) -> int:
     """Evaluate every rule against one host, and say what they came to."""
+    prepared = _inputs(args, "preflight")
+    if isinstance(prepared, int):
+        return prepared
+    host, profile, request = prepared
+
+    try:
+        result = evaluate(host, profile, request)
+    except RuleError as error:
+        print(error, file=sys.stderr)
+        return EXIT_REFUSED
+
+    if args.as_json:
+        print(json.dumps(document(result, profile, request), indent=2, sort_keys=True))
+    else:
+        rendering = render_preflight(result)
+        print(rendering, file=sys.stderr if result.blocked else sys.stdout)
+
+    return EXIT_REFUSED if result.blocked else EXIT_OK
+
+
+def plan(args: argparse.Namespace) -> int:
+    """Render the intended end state, or refuse and say what would have to change.
+
+    Preflight runs first, and a block ends it here. There is no partial plan and no flag
+    that produces one: a host that cannot carry the instance is reported as refused, with
+    the rule and the way out, rather than as a plan somebody might apply anyway.
+    """
+    prepared = _inputs(args, "plan")
+    if isinstance(prepared, int):
+        return prepared
+    host, profile, request = prepared
+
+    try:
+        gates = evaluate(host, profile, request)
+    except RuleError as error:
+        print(error, file=sys.stderr)
+        return EXIT_REFUSED
+
+    if gates.blocked:
+        # The refusal report already says that no plan was produced and that nothing
+        # produces one anyway. Saying it twice would read as two different refusals.
+        print(render_preflight(gates), file=sys.stderr)
+        return EXIT_REFUSED
+
+    try:
+        artifact = build_plan(host, profile, request, gates)
+    except (PlanError, PlaceholderError) as error:
+        print(error, file=sys.stderr)
+        return EXIT_REFUSED
+
+    if args.as_json:
+        print(rendered(artifact), end="")
+    else:
+        print(summarize(artifact))
+    return EXIT_OK
+
+
+def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Request] | int:
+    """Read the facts, the profile and the request, or say why none of them was read.
+
+    Shared by the two verbs that need all three, so that a malformed profile is refused
+    in the same words whichever of them was asked for.
+    """
     if args.facts is None or args.profile is None:
         print(
-            "basewright preflight: --facts and --profile are both required. Collecting "
+            f"basewright {verb}: --facts and --profile are both required. Collecting "
             "facts from a live host runs over SSH and is not built yet -- see "
             "docs/dev/STATUS.md.",
             file=sys.stderr,
@@ -201,18 +270,11 @@ def preflight(args: argparse.Namespace) -> int:
             instance=args.instance,
             port=args.port,
         )
-        result = evaluate(host, profile, request)
-    except (RequestError, RuleError) as error:
+    except RequestError as error:
         print(error, file=sys.stderr)
         return EXIT_REFUSED
 
-    if args.as_json:
-        print(json.dumps(document(result, profile, request), indent=2, sort_keys=True))
-    else:
-        rendered = render_preflight(result)
-        print(rendered, file=sys.stderr if result.blocked else sys.stdout)
-
-    return EXIT_REFUSED if result.blocked else EXIT_OK
+    return host, profile, request
 
 
 def render(host: HostFacts) -> str:

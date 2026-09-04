@@ -1,0 +1,61 @@
+PREFLIGHT  db-small.invalid -- exampledb 3, instance main
+  14 pass -- 3 warn -- 3 block -- 3 skipped
+
+  BLOCK disk.free_space           backup needs 50GB and / has 30.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK locale.present            en_US.UTF-8 is not present; the host has C.UTF-8
+                                  -> Generate en_US.UTF-8 on the host before
+                                     provisioning. Initialization is the last step of
+                                     apply and the first thing that fails without it, by
+                                     which point the packages are installed and the
+                                     account exists.
+
+  BLOCK os.supported              debian 12 is not supported by ExampleDB 3; it supports
+                                  ubuntu 22.04, ubuntu 24.04, rocky 9
+                                  -> Provision this instance on a supported operating
+                                     system, or choose a version of the engine that
+                                     supports this one. The support matrix is where an
+                                     unsupported combination is argued about, and it is
+                                     in the profile where a reviewer sees it.
+
+  WARN  disk.separate_mounts      backup and data both live on /; journal and data both
+                                  live on /; log and data both live on /
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  exampledb.storage.rotational
+                                  not path.data.rotational does not hold on this host
+                                  -> Move the data path to solid state storage if the
+                                     workload is latency sensitive. Rotational storage
+                                     is supported and will be sized for, but it is not
+                                     the assumption the default parameters are written
+                                     against.
+
+  WARN  os.swappiness             vm.swappiness is 60, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  SKIP  firewall.state            the host did not report a firewall
+                                  -> Collect it, or accept that this is unanswered.
+
+  SKIP  repo.reachable            the host did not report whether it can reach exampledb
+                                  -> Reaching a repository is proved from the host,
+                                     which happens when the facts are collected over
+                                     SSH. Until then this is unanswered rather than
+                                     assumed, and the first task of apply is where it
+                                     would otherwise be discovered.
+
+  SKIP  time.sync                 the host did not report a time synchronization service
+                                  -> Collect it, or accept that this is unanswered.
+
+REFUSED  3 rules block this host. No plan was produced, and there is no flag that
+         produces one.

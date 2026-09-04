@@ -26,10 +26,10 @@ from basewright.preflight.model import (
     Source,
     Verdict,
 )
-from basewright.preflight.scope import build_scope
 from basewright.preflight.shared import SHARED_RULES, Context, SharedRule
 from basewright.profiles.model import GateRule, Profile
 from basewright.request import Request, supported_version
+from basewright.scope import build_scope
 
 
 class RuleError(ValueError):

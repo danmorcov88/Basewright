@@ -5,13 +5,23 @@ rules:
     parameter: cache_size
     expr: 0.25 * host.memory.total_bytes
     unit: bytes
-    min: 128MB
-    max: 8GB
-    round_to: 128MB
+    min: 128MiB
+    max: 8GiB
+    round_to: 128MiB
     why: >-
       A quarter of memory is the standard starting point for a shared cache, and it is
       capped because past that point the operating system page cache is the better place
       for the memory: it can be reclaimed under pressure, and this cannot.
+  - id: exampledb.work_memory
+    parameter: work_memory
+    expr: (0.25 * host.memory.total_bytes) / (max_connections * 2)
+    unit: bytes
+    min: 4MiB
+    why: >-
+      This is charged per sort or hash node, not per connection, and a single query can
+      hold several at once. The division by two is the allowance for that. It is written
+      above the rule it depends on deliberately: the order values are computed in comes
+      from what they read, not from where they sit in this file.
   - id: exampledb.max_connections
     parameter: max_connections
     expr: "200"
@@ -20,14 +30,16 @@ rules:
     why: >-
       A fixed, conservative default. Above four hundred the answer is a connection pooler
       rather than a larger number here, because the memory cost is paid per backend.
-  - id: exampledb.work_memory
-    parameter: work_memory
-    expr: (0.25 * host.memory.total_bytes) / (max_connections * 2)
-    unit: bytes
-    min: 4MB
+  - id: exampledb.parallel_workers
+    parameter: parallel_workers
+    expr: host.cpu.cores
+    unit: count
+    max: 32
+    warn_above: 16
     why: >-
-      This is charged per sort or hash node, not per connection, and a single query can
-      hold several at once. The division by two is the allowance for that.
+      One worker per core is the most the machine can run without them queueing behind
+      each other. Past sixteen the coordination costs more than the parallelism returns
+      on most workloads, and past thirty-two it stops returning anything at all.
   - id: exampledb.random_page_cost
     parameter: random_page_cost
     expr: 1.1 if not path.data.rotational else 4.0

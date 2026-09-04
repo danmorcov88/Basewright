@@ -23,7 +23,7 @@ Last reviewed: 2026-09-04.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0015           | done        |
+| Architecture decision records 0001–0018           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
@@ -34,11 +34,13 @@ Last reviewed: 2026-09-04.
 | Gate engine and severity resolution               | done        |
 | The twenty shared rules of the brief              | done        |
 | Refusal report, and the preflight contract        | done        |
-| `plan` and `verify`                               | not started |
-| Planner: sizing evaluation, layout, plan assembly | not started |
+| `plan`, from a facts document                     | done        |
+| Planner: sizing evaluation, layout, plan assembly | done        |
+| The plan contract, frozen                         | done        |
+| Golden plan fixtures, and the refusals beside them | done       |
+| Plan determinism check in CI                      | done        |
 | Report rendering for a plan, human and JSON       | not started |
-| Golden plan fixtures                              | not started |
-| Plan determinism check in CI                      | not started |
+| `verify`                                          | not started |
 
 ## Not yet wired into CI
 
@@ -47,7 +49,6 @@ for them to check:
 
 - `ansible-lint` — waits for the first playbook and role, in Phase A.
 - `molecule` — waits for the first engine role, in Phase A.
-- Plan determinism — waits for the planner, in Foundation.
 - Quickstart output assertions — wait for a working end-to-end path, in Phase A.
 
 ## Placeholder values
@@ -94,11 +95,32 @@ confirmed, they are documented as assumptions rather than presented as policy.
   not parked in `profiles/` where it would make this page read better than it should.
 - `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
   step, built in Phase A, and its schema is expected to gain detail there.
-- **The plan contract is not frozen.** `plan.json` carries `schema_version: "1"` and
-  nothing has ever produced one, so it is still being written: the `host` section was
-  reshaped alongside the fact model without a version bump, because bumping a contract
-  with no second reader is ceremony. It freezes when `plan` produces its first artifact,
-  and every change after that is a version.
+- **The plan contract is frozen.** `plan` produces artifacts, five of them are committed
+  under `test/golden/`, and every change to `plan.json` from here is a version of the
+  contract rather than a patch. What it gained on the way in: `parameters` carry a
+  canonical value, a unit and a display rather than one rendered string (ADR-0016);
+  `packages`, `configuration` and `tunables` are first-class sections, so apply can
+  execute the plan without reading the profile (ADR-0018); `result` counts the warnings
+  that need acknowledging; and a gate result names its source, so the plan and the
+  preflight document describe a rule identically.
+- **`warn_above` produces a warning that has to be acknowledged.** It is not a gate —
+  preflight closed before the parameter existed — so it travels on the parameter as
+  `above_advisory` and joins the same single count apply refuses on. There is one
+  acknowledgement, because a warning raised after the gates closed is not a lesser warning.
+- **A sizing rule that reads an unreported fact refuses the plan.** Not a defect in the
+  profile and not a host that fell short: nobody can tell, so there is no value to write
+  down and no plan. The alternative — omitting the parameter — is a hole apply would find
+  halfway through, on somebody else's machine.
+- **`apply.yml` is the eighth profile file.** `changes` and `secrets` needed data no file
+  declared: which configuration files get written and where, which host settings get
+  changed, and what secrets exist. Inferring any of it would have meant the core guessing
+  at engine knowledge, so it is declared instead (ADR-0018). An `initialization` section
+  is deliberately absent until apply exists to consume one.
+- **Two fixture hosts produce a plan and three are refused.** `rocky` and `small` are
+  blocked by the support matrix, `crowded` by four rules at once. That ratio is the
+  fixtures doing their job, and the refusals are committed as goldens for the same reason
+  the plans are: a change that quietly stops refusing a host is the change most worth
+  noticing.
 - The fact model was built to be exactly what the shared gates need. Writing them found one
   gap, `reachable_repositories`, which is now in the contract; everything else the twenty
   rules ask for was already there.
@@ -108,5 +130,9 @@ confirmed, they are documented as assumptions rather than presented as policy.
 - The quickstart in the README is deliberately absent rather than aspirational. Every
   terminal image it carries is a real capture, including the ones of verbs that do not
   work yet.
-- The plan rendering in the README is a specification of the artifact's shape, labelled as
-  such, and is replaced by a generated capture once the planner produces one.
+- The plan rendering in the README is still a specification, labelled as such. The
+  *artifact* now exists and its sections are drawn from the schema, but the console
+  rendering that lays every value out beside its rule is the reporter's, which is the next
+  slice. What `plan` prints today is a short confirmation, captured for real, and it says
+  so. It deliberately omits the moment the plan was written, so that two runs that decided
+  the same thing print the same thing and the capture can be checked byte for byte.

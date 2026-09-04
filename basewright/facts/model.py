@@ -49,6 +49,17 @@ class OperatingSystem:
     pretty_name: str | None = None
     kernel: str | None = None
 
+    @property
+    def major(self) -> str:
+        """The leading component of the version.
+
+        Repositories are keyed by it on the families that do not use a code name, and a
+        support matrix lists it where a distribution promises compatibility across the
+        minor releases. Splitting it here means the two cannot disagree about whether
+        ``9.4`` is nine.
+        """
+        return self.version.split(".", 1)[0]
+
     def __str__(self) -> str:
         return self.pretty_name or f"{self.distro} {self.version}"
 

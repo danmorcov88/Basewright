@@ -1,0 +1,4 @@
+# Managed by Basewright. Generated from plan {{ plan_id }} on {{ generated_at }}.
+# Local connections only. A rule reachable from the network is a verify failure.
+local   all   {{ layout.service_account.name }}   peer
+host    all   all   127.0.0.1/32   scram

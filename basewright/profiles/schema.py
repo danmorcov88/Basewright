@@ -19,6 +19,7 @@ PROFILE_FILES: tuple[str, ...] = (
     "layout.yml",
     "sizing.yml",
     "packages.yml",
+    "apply.yml",
     "verify.yml",
 )
 

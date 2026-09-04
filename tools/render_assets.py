@@ -484,7 +484,7 @@ def render_finished_vs_fit(theme: Theme) -> str:
 #: of the decision map, and test/unit/test_decision_records.py asserts it matches the
 #: files in docs/adr/ exactly -- in both directions -- so the picture cannot describe a
 #: set of decisions the repository does not have.
-#: The seven files a profile is made of, what each declares, and which step consumes it.
+#: The eight files a profile is made of, what each declares, and which step consumes it.
 #: A test keeps this list and the schemas in ``schema/`` in step with one another, so the
 #: picture cannot quietly describe a profile format that no longer exists.
 PROFILE_ANATOMY: tuple[tuple[str, str, str], ...] = (
@@ -494,6 +494,7 @@ PROFILE_ANATOMY: tuple[tuple[str, str, str], ...] = (
     ("layout.yml", "paths, modes, the service account", "plan, apply"),
     ("sizing.yml", "parameter rules, each with its reason", "plan"),
     ("packages.yml", "repositories, packages, service unit", "apply"),
+    ("apply.yml", "config files, host settings, secrets", "plan, apply"),
     ("verify.yml", "assertions about the running instance", "verify"),
 )
 
@@ -517,6 +518,62 @@ FACTS_MODEL: tuple[tuple[str, str, str], ...] = (
     ("firewall", "whether it is on, and what it admits", "firewall.state"),
 )
 
+#: The sections a plan carries, and which step reads each one. Kept in step with
+#: schema/plan.schema.json by a test: the picture cannot describe a contract that moved,
+#: which matters more here than anywhere else, because this one is frozen.
+PLAN_ANATOMY: tuple[tuple[str, str, str], ...] = (
+    ("schema_version", "the version of this contract", "apply, before anything else"),
+    ("plan_id", "a digest of the plan, minus when", "the task log, and whoever approves"),
+    ("generated_at", "when it was written, in UTC", "a reader; nothing decides on it"),
+    ("tool_version", "which build produced it", "apply, which refuses another major"),
+    ("profile", "the engine, and the profile version", "verify, tracing a value to a rule"),
+    ("request", "host, version, environment, instance", "every step"),
+    ("host", "the machine the decisions were made on", "apply, before trusting the plan"),
+    ("preflight", "every rule, and what it made of it", "the reviewer; block is always 0"),
+    ("parameters", "each value, with its rule and reason", "apply, verify"),
+    ("layout", "paths, modes, owner, and the mount", "apply, verify"),
+    ("packages", "repository, package names, service", "apply, verify"),
+    ("configuration", "template, destination, mode, owner", "apply"),
+    ("tunables", "host settings, and what they are now", "apply"),
+    ("changes", "everything apply would do, in order", "the person who approves it"),
+    ("secrets", "a name and a place; never a value", "apply, writing them once"),
+    ("result", "whether it applies, and what to sign", "apply, which refuses otherwise"),
+)
+
+
+#: One value, from the rule that produced it to the line it occupies in a plan. The
+#: numbers are the ones the pipeline really produces for this host and this parameter,
+#: and a test holds them against the committed golden plan, so the picture cannot go on
+#: illustrating arithmetic the planner has stopped doing.
+SIZING_JOURNEY_HOST = "large"
+SIZING_JOURNEY_PARAMETER = "cache_size"
+#: What the picture says underneath the journey. Held against the golden plan by a test,
+#: because a caption naming a number is a claim about the artifact like any other.
+SIZING_JOURNEY_FOOTER: tuple[str, ...] = (
+    "The order the bounds are applied in is not cosmetic: rounding down after a floor "
+    "lands under that floor, so a bound is the last thing applied and it wins.",
+    "The plan carries 8589934592 and renders 8.0 GiB. Verify compares the number; the "
+    "engine's own spelling of it is the template's business.",
+)
+
+SIZING_JOURNEY: tuple[tuple[str, str, str], ...] = (
+    (
+        "the rule",
+        "0.25 * host.memory.total_bytes",
+        "sizing.yml, with min 128MiB, max 8GiB, round_to 128MiB",
+    ),
+    ("the host", "512.0 GiB", "host.memory.total_bytes, as the machine reported it"),
+    ("evaluated", "128.0 GiB", "the expression, read by the interpreter, never run"),
+    ("rounded", "128.0 GiB", "down to a multiple of 128MiB; already one, so unchanged"),
+    ("bounded", "8.0 GiB", "held at the ceiling, which the plan records as bounded_by max"),
+    (
+        "in the plan",
+        "cache_size 8.0 GiB",
+        "with exampledb.cache_size beside it, and the reason that rule carries",
+    ),
+)
+
+
 DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "What it produces",
@@ -524,6 +581,8 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0001", "plan before apply"),
             ("0009", "rules explain themselves"),
             ("0010", "match, or refuse"),
+            ("0016", "canonical values, not rendered"),
+            ("0017", "a plan is named by its content"),
         ),
     ),
     (
@@ -534,6 +593,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0011", "packages, never source"),
             ("0014", "rules are expressions"),
             ("0015", "shared gates are code"),
+            ("0018", "what apply does is declared"),
         ),
     ),
     (
@@ -695,20 +755,118 @@ def render_table(
 
 
 def render_profile_anatomy(theme: Theme) -> str:
-    """The seven files an engine is made of, and which step reads each one."""
+    """The eight files an engine is made of, and which step reads each one."""
     return render_table(
         theme,
-        title="An engine, as data: seven files and the step that reads each one",
+        title="An engine, as data: eight files and the step that reads each one",
         subtitle="Adding an engine means adding this directory. It never means editing the core.",
         headings=("FILE", "DECLARES", "READ BY"),
         rows=PROFILE_ANATOMY,
         footer=(
             "Every file is closed by a JSON Schema: an unknown key is an error, so a profile "
             "cannot imply behaviour the core does not have.",
-            "An eighth schema covers plan.json, the artifact these seven produce and the only "
+            "A ninth schema covers plan.json, the artifact these eight produce and the only "
             "thing apply reads.",
         ),
     )
+
+
+def render_plan_anatomy(theme: Theme) -> str:
+    """What a plan carries, and which step reads each part of it."""
+    return render_table(
+        theme,
+        title="The plan, section by section: what each carries and what reads it",
+        subtitle=(
+            "Apply consumes this and nothing else. A value apply needs that is not here "
+            "means the plan is incomplete, not that apply should go and look."
+        ),
+        headings=("SECTION", "CARRIES", "READ BY"),
+        rows=PLAN_ANATOMY,
+        footer=(
+            "The contract is closed and frozen. An unknown key is an error, and a change to "
+            "any field here is a version of the contract rather than a patch.",
+            "The id is a digest of everything above except generated_at, so two runs that "
+            "decided the same thing produce the same name for it.",
+        ),
+        columns=(20, 190, 540),
+    )
+
+
+def render_sizing_journey(theme: Theme) -> str:
+    """One value, from the rule that produced it to the line it occupies in a plan."""
+    width = 940
+    left, top, row_h = 24.0, 96.0, 52.0
+    panel_w = width - left * 2
+    panel_h = 16.0 + len(SIZING_JOURNEY) * row_h
+    footer = SIZING_JOURNEY_FOOTER
+    height = int(top + panel_h + 34 + len(footer) * 20)
+
+    body: list[str] = [
+        rect(0, 0, width, height, fill=theme.bg),
+        text(
+            left,
+            34,
+            "How one value is arrived at, and what it takes with it",
+            fill=theme.fg,
+            size=15,
+            weight="600",
+        ),
+        text(
+            left,
+            56,
+            f"{SIZING_JOURNEY_PARAMETER} on db-{SIZING_JOURNEY_HOST}.invalid: a machine with "
+            "more memory than the rule will let the parameter have.",
+            fill=theme.muted,
+            size=12.5,
+        ),
+        text(
+            left,
+            76,
+            "Every step is Python. None of it is a template, and none of it is evaluated "
+            "on the host.",
+            fill=theme.muted,
+            size=12.5,
+        ),
+        rect(left, top, panel_w, panel_h, fill=theme.panel, stroke=theme.line),
+    ]
+
+    stage_x = left + 20
+    value_x = left + 132
+    note_x = left + 372
+
+    for index, (stage, value, note) in enumerate(SIZING_JOURNEY):
+        baseline = top + 16 + row_h * index + 22
+        last = index == len(SIZING_JOURNEY) - 1
+        body.extend(
+            (
+                text(stage_x, baseline, stage, fill=theme.muted, size=11.5, spacing="0.06em"),
+                text(
+                    value_x,
+                    baseline,
+                    value,
+                    fill=theme.accent if last else theme.fg,
+                    size=13,
+                    family=MONO,
+                    weight="600" if last else "normal",
+                ),
+                text(note_x, baseline, note, fill=theme.muted, size=12),
+            )
+        )
+        if not last:
+            body.append(
+                line(
+                    stage_x + 44,
+                    baseline + 10,
+                    stage_x + 44,
+                    baseline + row_h - 14,
+                    stroke=theme.line,
+                    arrow=True,
+                )
+            )
+
+    for index, note in enumerate(footer):
+        body.append(text(left, top + panel_h + 26 + index * 20, note, fill=theme.muted, size=12.5))
+    return svg(width, height, body)
 
 
 def render_facts_model(theme: Theme) -> str:
@@ -767,7 +925,10 @@ def build() -> dict[Path, str]:
     profile = "test/fixtures/profiles/exampledb"
     captures: dict[str, tuple[str, list[str]]] = {
         "cli-help": ("basewright --help", capture(["basewright.cli", "--help"])),
-        "cli-plan": ("basewright plan", capture(["basewright.cli", "plan"])),
+        "cli-plan": (
+            "basewright plan",
+            capture(["basewright.cli", "plan", "--facts", facts, "--profile", profile]),
+        ),
         "cli-gather": (
             "basewright gather",
             capture(["basewright.cli", "gather", "--facts", facts]),
@@ -797,6 +958,8 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"decisions-{suffix}.svg"] = render_decisions(theme)
         assets[ASSETS / f"profile-anatomy-{suffix}.svg"] = render_profile_anatomy(theme)
         assets[ASSETS / f"facts-model-{suffix}.svg"] = render_facts_model(theme)
+        assets[ASSETS / f"plan-anatomy-{suffix}.svg"] = render_plan_anatomy(theme)
+        assets[ASSETS / f"sizing-journey-{suffix}.svg"] = render_sizing_journey(theme)
         for name, (title, lines) in captures.items():
             assets[ASSETS / f"{name}-{suffix}.svg"] = render_terminal(title, lines, theme)
 

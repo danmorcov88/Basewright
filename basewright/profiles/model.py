@@ -186,6 +186,53 @@ class PackageSet:
 
 
 @dataclass(frozen=True)
+class ConfigurationFile:
+    """One file apply renders from a template, and where it lands.
+
+    ``carries_parameters`` is the only thing the core knows about the inside of one, and
+    it is a count rather than a content: the plan says a file is written with five
+    parameters in it, and what those five look like once written is the template's business.
+    """
+
+    identifier: str
+    template: str
+    destination: str
+    mode: str
+    description: str
+    owner: str | None = None
+    carries_parameters: bool = False
+
+
+@dataclass(frozen=True)
+class Tunable:
+    """A host setting the instance needs changed, and what it is now.
+
+    ``observed`` is an expression rather than a name the core translates, so that a
+    profile can ask for a setting nobody anticipated without the core growing a table of
+    them.
+    """
+
+    name: str
+    value: str | float | bool
+    why: str
+    observed: str | None = None
+
+
+@dataclass(frozen=True)
+class Secret:
+    """Something the instance needs that no artifact may ever carry.
+
+    The name says what it is for and the location says where to find it. There is no
+    third field, here or in the plan, and that is the whole of the protection: a value
+    cannot be leaked into a document that has nowhere to put one.
+    """
+
+    name: str
+    location: str
+    description: str
+
+
+@dataclass(frozen=True)
 class VerifyCheck:
     """One assertion about the running instance."""
 
@@ -218,6 +265,9 @@ class Profile:
     service_account: ServiceAccount
     sizing: tuple[SizingRule, ...]
     packages: Mapping[str, PackageSet]
+    configuration: tuple[ConfigurationFile, ...]
+    tunables: tuple[Tunable, ...]
+    secrets: tuple[Secret, ...]
     checks: tuple[VerifyCheck, ...]
     default_locale: str | None = None
     documentation: str | None = None
