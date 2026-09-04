@@ -11,11 +11,19 @@ text, so that a change to how a plan reads is a diff like any other. A host that
 gets the refusal, because refusal is a first-class outcome and a change that quietly stops
 refusing a host is the change most worth noticing.
 
-One more file is written, and it is not a golden: `test/fixtures/plan/edited.json`, the
-first plan with a value changed and its name left alone. A plan is named after a digest of
-its own content, so that file is what a plan tampered with looks like, and it is generated
-here rather than committed by hand because a hand-written copy would fall behind the plan
-it is a copy of.
+A fourth is written for the other end of the loop: a verify report, in both forms, over a
+committed reading of an instance this repository's own test run really provisioned. A
+change to how a verdict reads is then a diff like any other too -- and unlike a plan, this
+one is not derived from a fixture host, because there is no way to derive what a running
+database will say. It is a reading, kept.
+
+Two more files are written and neither is a golden. `test/fixtures/plan/edited.json` is the
+first plan with a value changed and its name left alone -- a plan is named after a digest of
+its own content, so that file is what a plan tampered with looks like.
+`test/fixtures/observations/changed.json` is the real reading with one parameter widened,
+which is what an instance somebody changed behind the plan's back looks like. Both are
+generated here rather than committed by hand, because a hand-written copy falls behind the
+thing it is a copy of.
 
 Only one field is pinned: `generated_at`, which is the one thing two identical plans
 legitimately differ in. Everything else is real, `tool_version` included, so a release
@@ -45,11 +53,28 @@ from basewright.preflight import evaluate  # noqa: E402
 from basewright.profiles import load_profile  # noqa: E402
 from basewright.report.plan import render_plan  # noqa: E402
 from basewright.report.preflight import render_preflight  # noqa: E402
+from basewright.report.verify import render_verify  # noqa: E402
 from basewright.request import resolve_request  # noqa: E402
+from basewright.verify import document as verification  # noqa: E402
+from basewright.verify import load_observation, read_observation, verify  # noqa: E402
 
 GOLDEN = ROOT / "test" / "golden"
 HOSTS = ROOT / "test" / "fixtures" / "hosts"
 EDITED = ROOT / "test" / "fixtures" / "plan" / "edited.json"
+
+#: The other end of the loop, and the one pair of inputs in this repository that nobody
+#: wrote: the plan the apply scenario built for a container, and what that container said
+#: when verify read it back. Committed as they came off the run, exactly as two of the
+#: fixture hosts are, so that "an instance verified is an instance like any other" is a
+#: check rather than a claim.
+APPLIED = ROOT / "test" / "fixtures" / "plan" / "applied.json"
+OBSERVED = ROOT / "test" / "fixtures" / "observations" / "observed.json"
+
+#: The same reading with one parameter widened, which is what an instance somebody changed
+#: behind the plan's back looks like. Generated rather than committed by hand, and the
+#: parameter is the one the molecule scenario really alters on the running cluster.
+CHANGED = ROOT / "test" / "fixtures" / "observations" / "changed.json"
+WIDENED = ("work_mem", 67108864)
 
 #: The profiles every fixture host is put through, and the directory each one's answers
 #: are written under. The two do different jobs. The fictional engine exercises the
@@ -96,7 +121,46 @@ def build() -> dict[Path, str]:
             goldens[under / "rendered" / f"{name}.txt"] = render_plan(plan) + "\n"
 
     goldens[EDITED] = _tampered_with(goldens)
+    goldens[CHANGED] = _widened()
+    goldens.update(_verified(goldens))
     return goldens
+
+
+def _widened() -> str:
+    """The committed reading with one parameter changed, and nothing else touched.
+
+    The parameter is the one the molecule scenario really widens on the running cluster, so
+    the picture in the documentation and the case CI proves are the same case.
+    """
+    reading = json.loads(OBSERVED.read_text(encoding="utf-8"))
+    name, value = WIDENED
+    reading["observations"]["parameters"]["settings"][name] = value
+    return json.dumps(reading, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+
+
+def _verified(goldens: dict[Path, str]) -> dict[Path, str]:
+    """The verify report over the committed reading, and over the changed one.
+
+    Both, because a report that only ever passes has not been shown to be looking, and the
+    diff on the failing one is where a change to how a refusal reads shows up.
+    """
+    plan = json.loads(APPLIED.read_text(encoding="utf-8"))
+    profile = load_profile(ROOT / "profiles" / plan["request"]["engine"])
+    under = GOLDEN / plan["request"]["engine"] / "verified"
+
+    written: dict[Path, str] = {}
+    readings = {
+        "observed": load_observation(OBSERVED),
+        "changed": read_observation(json.loads(goldens[CHANGED]), CHANGED),
+    }
+    for name, observation in readings.items():
+        result = verify(plan, profile, observation)
+        document = verification(result, verified_at=PINNED)
+        written[under / f"{name}.json"] = (
+            json.dumps(document, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+        )
+        written[under / f"{name}.txt"] = render_verify(result) + "\n"
+    return written
 
 
 def _tampered_with(goldens: dict[Path, str]) -> str:

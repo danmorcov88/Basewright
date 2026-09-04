@@ -16,11 +16,23 @@ from pathlib import Path
 import pytest
 
 from basewright.planner.schema import plan_problems
+from basewright.schema import problems_in
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from render_goldens import FIXTURES, GOLDEN, PROFILES, TAMPERED_FROM, build  # noqa: E402
+from render_goldens import (  # noqa: E402
+    APPLIED,
+    CHANGED,
+    EDITED,
+    FIXTURES,
+    GOLDEN,
+    OBSERVED,
+    PROFILES,
+    TAMPERED_FROM,
+    WIDENED,
+    build,
+)
 
 
 @pytest.fixture(scope="module")
@@ -60,7 +72,7 @@ def test_nothing_is_committed_that_no_fixture_produces() -> None:
     committed = {
         path
         for engine in ENGINES
-        for directory in ("plan", "rendered", "refused")
+        for directory in ("plan", "rendered", "refused", "verified")
         for path in (GOLDEN / engine / directory).glob("*")
     }
 
@@ -110,11 +122,51 @@ def test_each_engine_refuses_a_host_and_plans_another(
 
 
 def test_every_golden_plan_validates_against_the_contract(goldens: dict[Path, str]) -> None:
-    for path, content in goldens.items():
-        if path.suffix != ".json":
-            continue
+    """The plans, and the plan that is wrong on purpose -- which is wrong about its name
+    rather than about its shape. The renderer writes other documents too, a verify report
+    and a reading of an instance, and those answer to contracts of their own."""
+    plans = [
+        (path, content)
+        for path, content in goldens.items()
+        if path.suffix == ".json" and path.parent.name == "plan"
+    ]
+    plans.append((EDITED, goldens[EDITED]))
+
+    assert plans
+    for path, content in plans:
         problems = plan_problems(json.loads(content))
         assert problems == [], f"{path.name}: " + "\n".join(str(p) for p in problems)
+
+
+def test_every_verify_report_validates_against_its_own_contract(
+    goldens: dict[Path, str],
+) -> None:
+    """The other end of the loop answers to schema/verification.schema.json, which is a
+    different closed contract and is checked as one."""
+    reports = [
+        (path, content)
+        for path, content in goldens.items()
+        if path.suffix == ".json" and path.parent.name == "verified"
+    ]
+
+    assert reports
+    for path, content in reports:
+        problems = problems_in(
+            json.loads(content), schema_name="verification.schema.json", file=path.name
+        )
+        assert problems == [], f"{path.name}: " + "\n".join(str(p) for p in problems)
+
+
+def test_the_committed_reading_validates_against_the_observation_contract() -> None:
+    """It came off a container rather than being written, so what it proves is that a
+    document a role really produced is one the core really accepts."""
+    problems = problems_in(
+        json.loads(OBSERVED.read_text(encoding="utf-8")),
+        schema_name="observation.schema.json",
+        file=OBSERVED.name,
+    )
+
+    assert problems == []
 
 
 def test_a_refused_host_gets_a_report_rather_than_a_plan(goldens: dict[Path, str]) -> None:
@@ -146,3 +198,51 @@ def test_every_golden_is_ascii(goldens: dict[Path, str]) -> None:
     """These are read in terminals and diffed on machines that disagree about encodings."""
     for path, content in goldens.items():
         assert content.isascii(), path.name
+
+
+# ------------------------------------------------------- the other end of the loop
+
+
+def test_a_verify_report_is_committed_for_both_endings(goldens: dict[Path, str]) -> None:
+    """Both, because a report that only ever passes has not been shown to be looking, and
+    the diff on the failing one is where a change to how a refusal reads shows up."""
+    engine = json.loads(APPLIED.read_text(encoding="utf-8"))["request"]["engine"]
+
+    assert under(goldens, engine, "verified") == {"observed", "changed"}
+
+
+def test_the_committed_reading_verifies_and_the_changed_one_does_not(
+    goldens: dict[Path, str],
+) -> None:
+    engine = json.loads(APPLIED.read_text(encoding="utf-8"))["request"]["engine"]
+    verified = GOLDEN / engine / "verified"
+
+    assert json.loads(goldens[verified / "observed.json"])["result"]["verified"] is True
+    assert json.loads(goldens[verified / "changed.json"])["result"]["verified"] is False
+
+
+def test_the_changed_reading_differs_from_the_real_one_in_exactly_one_value(
+    goldens: dict[Path, str],
+) -> None:
+    """Generated rather than committed by hand, so it cannot fall behind the reading it is
+    a copy of -- the same treatment the tampered plan gets, and for the same reason."""
+    real = json.loads(OBSERVED.read_text(encoding="utf-8"))
+    changed = json.loads(goldens[CHANGED])
+    name, value = WIDENED
+
+    real["observations"]["parameters"]["settings"][name] = value
+    assert changed == real
+    assert GOLDEN not in CHANGED.parents, "a reading that is wrong on purpose is not a golden"
+
+
+def test_the_changed_report_names_the_parameter_that_was_widened(
+    goldens: dict[Path, str],
+) -> None:
+    """The picture in the README and the case the molecule scenario proves on a container
+    are the same case, down to the parameter."""
+    engine = json.loads(APPLIED.read_text(encoding="utf-8"))["request"]["engine"]
+    report = goldens[GOLDEN / engine / "verified" / "changed.txt"]
+    name, _ = WIDENED
+
+    assert name in report
+    assert "FAILED" in report

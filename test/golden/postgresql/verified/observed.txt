@@ -1,0 +1,28 @@
+VERIFY  apply-ubuntu2404 -- postgresql 16, instance main
+  plan a67a746d7850, read 2026-09-04T13:49:51Z
+  11 pass -- 0 fail -- 0 not observed
+  PASS  postgresql.service.running      postgresql@16-main is active, enabled
+  PASS  postgresql.port.listening       127.0.0.1:5432, ::1:5432
+  PASS  postgresql.connection.accepted  a connection as postgres was accepted
+  PASS  postgresql.version.matches      16.15 (Ubuntu 16.15-1.pgdg24.04+2) (major 16)
+  PASS  postgresql.parameters.match     all 17 read back as planned
+
+  PASS  postgresql.paths.match          2 of 4 paths are where the plan places them; the
+                                        instance has no notion of backup, log
+
+  PASS  postgresql.log.writing          /var/log/postgresql/postgresql-16-main.log has
+                                        been written to since start, 2055 bytes
+
+  PASS  postgresql.backup.writable      /backup/postgresql/main is writable by the
+                                        service account
+
+  PASS  postgresql.auth.no_trust        4 rules, none of them password-free off the
+                                        machine
+
+  PASS  postgresql.account.no_defaults  1 account can log in, with a password
+
+  PASS  postgresql.initialization.matches
+                                        created with data_checksums=true, encoding=UTF8,
+                                        locale=en_US.UTF-8, start_conf=auto
+
+VERIFIED   all 11 checks match a67a746d7850. This instance is what the plan says it is.

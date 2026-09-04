@@ -1,0 +1,107 @@
+---
+# The step that closes the loop. Apply promised something; this reads the instance back and
+# says whether the promise held.
+#
+# A playbook rather than a CLI verb, for the reason every other act against a host is one
+# (ADR-0020): reaching a live instance runs over SSH, and the deciding half of this project
+# does not open sockets. So the engine's role reads the instance and writes an observation
+# document, and `basewright verify` compares that document with the plan (ADR-0024). The
+# split is exactly the collecting playbook's, and for exactly the same reasons.
+#
+# Nothing here changes the target. The role that reads the instance asks questions of it;
+# the one thing it might have been tempted to write -- a probe file, to prove the backup
+# path can be written to -- is asked of the kernel instead.
+#
+# One input, the plan. There is no --host and no engine name: the plan says which machine
+# it was built for and which engine runs on it, and this reads both out of it.
+- name: Verify an instance against the plan it came from
+  hosts: "{{ basewright_hosts | default('all') }}"
+  gather_facts: true
+
+  vars:
+    basewright_plan_path: "{{ basewright_plan_file | mandatory }}"
+    basewright_plan: "{{ lookup('file', basewright_plan_path) | from_json }}"
+    # Where the reading lands, on the control node rather than on the target. An instance
+    # is not asked to keep a record of having been inspected, and the verb that judges the
+    # reading runs where this playbook runs.
+    basewright_observation_dir: "{{ playbook_dir }}/../../observations"
+    basewright_observation_path: "{{ basewright_observation_dir }}/{{ inventory_hostname }}.json"
+
+  pre_tasks:
+    # The same check apply makes, in the same words, by the same tool. A plan whose id no
+    # longer matches its content has been edited since somebody approved it, and verifying
+    # an instance against an edited plan would produce a report saying it matches something
+    # nobody agreed to.
+    - name: Read the plan back through the tool that wrote it
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli plan
+          --from {{ basewright_plan_path | quote }}
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+  # The plan names the engine, and the engine's role is the only thing here that knows what
+  # a cluster is. What comes back is `basewright_observed`: a mapping from kind to what was
+  # read, in the terms of schema/observation.schema.json. That name is the contract between
+  # this playbook and any engine's role, which is why it is a shared one.
+  tasks:
+    - name: Read the instance the plan describes
+      ansible.builtin.include_role:
+        name: "{{ basewright_plan.profile.engine }}"
+        tasks_from: observe
+
+  post_tasks:
+    - name: Make somewhere for the reading to land
+      ansible.builtin.file:
+        path: "{{ basewright_observation_dir }}"
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    # Assembled by the filter rather than written out field by field here, so that the
+    # envelope has one implementation and pytest covers it. What this contributes is the
+    # moment: the host's own clock, because the reading happened there.
+    - name: Write down what the instance turned out to be
+      ansible.builtin.copy:
+        content: >-
+          {{ basewright_observed
+             | basewright_observation(basewright_plan, ansible_facts.date_time.iso8601)
+             | to_nice_json(indent=2, sort_keys=True) }}
+        dest: "{{ basewright_observation_path }}"
+        mode: "0640"
+      delegate_to: localhost
+      become: false
+
+    # Read rather than raised. The verb exits 2 on a mismatch, which would end the play
+    # before the report explaining it had been printed -- and the report is the product.
+    - name: Judge the reading against the plan
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli verify
+          --plan {{ basewright_plan_path | quote }}
+          --observed {{ basewright_observation_path | quote }}
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      register: basewright_verification
+
+    - name: Say what the instance turned out to be
+      ansible.builtin.debug:
+        msg: >-
+          {{ basewright_verification.stdout_lines + basewright_verification.stderr_lines }}
+
+    # A verify failure is loud, because it means the instance is not what the documentation
+    # now claims it is. There is no flag here that turns it into anything else.
+    - name: An instance that does not match its plan ends the run
+      ansible.builtin.assert:
+        that: basewright_verification.rc == 0
+        fail_msg: >-
+          {{ inventory_hostname }} is not the instance {{ basewright_plan_path }} describes.
+          The report above names every check that did not match and what to do about each.
+          The reading it was judged from is at {{ basewright_observation_path }}.
+        success_msg: >-
+          this instance is what {{ basewright_plan.plan_id }} says it is

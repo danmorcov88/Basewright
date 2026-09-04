@@ -1,0 +1,84 @@
+{#
+  One statement, one round trip, one JSON object. Everything the running cluster alone can
+  answer about itself, in the spelling the plan uses -- so that comparing the two is a
+  comparison rather than a translation.
+
+  Written as a template rather than assembled in Python because it is SQL for one engine,
+  and engine knowledge lives in the engine's role. What it produces is not engine-shaped:
+  every key here is a term from schema/observation.schema.json.
+
+  The plan is `basewright_plan` here, which is the play's own variable. A profile's
+  configuration templates see it as `plan` instead, because apply renders those with one
+  name of its own choosing (ADR-0022) -- this is a template of the role rather than of the
+  profile, and it reads the variable that is actually in scope.
+
+  Names are quoted as SQL string literals, with any quote in them doubled. The first
+  version of this used `to_json` on the grounds that a JSON string looks like a quoted
+  literal -- which is true everywhere except SQL, where double quotes are an identifier and
+  `"shared_buffers"` is a column this query does not have. The cluster said so on the first
+  real run, which is the shortest possible demonstration of why the scenario provisions a
+  container rather than asserting against a fixture.
+#}
+{% set planned = basewright_plan.parameters %}
+WITH planned(name, is_bytes) AS (
+  VALUES
+{% for parameter in planned %}
+    ('{{ parameter.parameter | replace("'", "''") }}', {{ 'true' if parameter.unit == 'bytes' else 'false' }}){{ ',' if not loop.last else '' }}
+{% endfor %}
+),
+known AS (
+  SELECT p.name, p.is_bytes FROM planned p JOIN pg_settings s ON s.name = p.name
+)
+SELECT json_build_object(
+  'data_directory', current_setting('data_directory'),
+  'version_reported', current_setting('server_version'),
+  'version_major', (current_setting('server_version_num')::int / 10000)::text,
+  'started_at', extract(epoch FROM pg_postmaster_start_time()),
+  'logging_collector', current_setting('logging_collector') = 'on',
+  'log_directory', CASE
+      WHEN left(current_setting('log_directory'), 1) = '/'
+      THEN current_setting('log_directory')
+      ELSE current_setting('data_directory') || '/' || current_setting('log_directory')
+    END,
+  'settings', coalesce((
+      SELECT json_object_agg(name, CASE
+          WHEN is_bytes THEN to_json(pg_size_bytes(current_setting(name)))
+          ELSE to_json(current_setting(name)::numeric)
+        END)
+      FROM known
+    ), '{}'::json),
+  'unknown', coalesce((
+      SELECT json_agg(name ORDER BY name)
+      FROM planned WHERE name NOT IN (SELECT name FROM known)
+    ), '[]'::json),
+  {#
+    A method that requires no password is the finding, and which methods those are is this
+    engine's vocabulary rather than the core's. `local` is decided here for the same
+    reason: what counts as reachable only from this machine is a property of the
+    connection types this engine has. Anything not recognisably local is reported as not
+    local, which is the safe direction for a rule nobody may override.
+  #}
+  'auth_rules', coalesce((
+      SELECT json_agg(json_build_object(
+        'method', auth_method,
+        'local', type = 'local'
+                 OR address IN ('localhost', 'samehost')
+                 OR address ~ '^(127\.|::1)',
+        'address', coalesce(address, ''),
+        'password_required', auth_method NOT IN ('trust', 'peer', 'ident')
+      ) ORDER BY line_number)
+      FROM pg_hba_file_rules WHERE error IS NULL
+    ), '[]'::json),
+  'roles', coalesce((
+      SELECT json_agg(json_build_object(
+        'name', rolname,
+        'can_login', rolcanlogin,
+        'password_set', rolpassword IS NOT NULL,
+        'superuser', rolsuper
+      ) ORDER BY rolname)
+      FROM pg_authid WHERE rolname NOT LIKE 'pg\_%'
+    ), '[]'::json),
+  'locale', (SELECT datcollate FROM pg_database WHERE datname = 'postgres'),
+  'encoding', (SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'postgres'),
+  'data_checksums', current_setting('data_checksums') = 'on'
+)

@@ -34,7 +34,7 @@ import argparse
 import re
 import subprocess
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -615,6 +615,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0015", "shared gates are code"),
             ("0018", "what apply does is declared"),
             ("0022", "the plan says how it is created"),
+            ("0024", "the role observes, the core judges"),
         ),
     ),
     (
@@ -624,6 +625,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0004", "two severities, no override"),
             ("0012", "starts at a reachable host"),
             ("0013", "backups belong elsewhere"),
+            ("0025", "an unasked check is not a pass"),
         ),
     ),
     (
@@ -930,6 +932,42 @@ def render_apply_phases(theme: Theme) -> str:
     )
 
 
+#: The two halves of verify, and where they meet. The same split as the collecting
+#: pipeline, and the picture is here rather than folded into that one because what is
+#: surprising about it is different: the thing that reaches the instance is an engine's own
+#: role, and the thing that judges what it found has never heard of that engine.
+VERIFY_LOOP: tuple[tuple[str, str, str], ...] = (
+    ("Semaphore", "runs the playbook, holds the key", "the operator's interface"),
+    ("playbook", "reads the engine out of the plan", "ansible/playbooks/verify.yml"),
+    ("engine role", "asks the instance eleven questions", "the only half that speaks to it"),
+    ("instance", "answers; nothing about it changes", "the running database, over SSH"),
+    ("observation.json", "what it said, in a closed contract", "written on the control node"),
+    ("basewright", "compares that with the plan, and reports", "has never heard of an engine"),
+)
+
+
+def render_verify_loop(theme: Theme) -> str:
+    """Who reaches the instance, who judges what it said, and why those are not the same."""
+    return render_table(
+        theme,
+        title="How verify closes the loop: the role observes, the core judges",
+        subtitle=(
+            "Reaching a live instance runs over SSH, so the deciding half never does it. "
+            "What crosses between them is a document."
+        ),
+        headings=("STEP", "WHAT IT DOES", "WHAT IT IS"),
+        rows=VERIFY_LOOP,
+        footer=(
+            "Each of the eleven checks names a kind, and a kind is a question the core can "
+            "put to a reading without knowing which engine produced it.",
+            "A check nobody managed to ask is reported as its own outcome and still "
+            "refuses, because an unasked question proves nothing (ADR-0025).",
+        ),
+        columns=(20, 170, 500),
+        width=940,
+    )
+
+
 def render_verb_pipeline(theme: Theme) -> str:
     """Which half of the tool is in charge, and where the two of them meet."""
     return render_table(
@@ -952,6 +990,16 @@ def render_verb_pipeline(theme: Theme) -> str:
     )
 
 
+#: How many, in words, for the few titles that count something. Small on purpose: a set
+#: this project counts and cannot spell is a set that has grown past what a picture should
+#: be trying to say.
+_SPELLED: Mapping[int, str] = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+
+def _spelled(count: int) -> str:
+    return _SPELLED.get(count, str(count))
+
+
 def render_exit_codes(theme: Theme) -> str:
     """The exit codes, drawn from the registry the CLI actually returns.
 
@@ -961,7 +1009,10 @@ def render_exit_codes(theme: Theme) -> str:
     """
     return render_table(
         theme,
-        title="The four exit codes, and what a red task in Semaphore means",
+        # Counted from the registry rather than written down, so a set that loses a member
+        # -- which is what happened when `verify` landed and 69 went -- cannot leave the
+        # picture claiming a number that no longer exists.
+        title=f"The {_spelled(len(EXIT_CODES))} exit codes, and what a red task in Semaphore means",
         subtitle=(
             "Semaphore marks a task red on any non-zero code. What the number carries is "
             "what to do next, not that something failed."
@@ -971,8 +1022,8 @@ def render_exit_codes(theme: Theme) -> str:
         footer=(
             "The line between the two non-zero answers: a file that could not be read at "
             "all is 64, a file that was read and is not acceptable is 2.",
-            "69 is temporary. It leaves when the verb it names is built, which narrows the "
-            "set rather than changing it.",
+            "There were four. 69 said a verb was not built, and it left when verify landed "
+            "-- which narrowed the set rather than changing it.",
         ),
         columns=(20, 100, 420),
         width=940,
@@ -1205,7 +1256,30 @@ CAPTURES: tuple[Capture, ...] = (
             "test/fixtures/profiles/exampledb",
         ),
     ),
-    Capture("cli-verify", "a verb that is not built, saying so", ("basewright.cli", "verify")),
+    Capture(
+        "cli-verify",
+        "an instance proved to be what its plan promised",
+        (
+            "basewright.cli",
+            "verify",
+            "--plan",
+            "test/fixtures/plan/applied.json",
+            "--observed",
+            "test/fixtures/observations/observed.json",
+        ),
+    ),
+    Capture(
+        "verify-refused",
+        "the same instance, after somebody changed something",
+        (
+            "basewright.cli",
+            "verify",
+            "--plan",
+            "test/fixtures/plan/applied.json",
+            "--observed",
+            "test/fixtures/observations/changed.json",
+        ),
+    ),
     Capture(
         "profile-refused",
         "a profile that does not hold up",
@@ -1249,6 +1323,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"verb-pipeline-{suffix}.svg"] = render_verb_pipeline(theme)
         assets[ASSETS / f"reachability-{suffix}.svg"] = render_reachability(theme)
         assets[ASSETS / f"apply-phases-{suffix}.svg"] = render_apply_phases(theme)
+        assets[ASSETS / f"verify-loop-{suffix}.svg"] = render_verify_loop(theme)
         for entry in CAPTURES:
             assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
                 entry.title, printed[entry.name], theme

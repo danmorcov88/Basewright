@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/verification.schema.json",
+  "title": "What verify decided",
+  "description": "The machine-readable half of a verify run: the plan, the observation it was judged against, and every check with its outcome. Section 10 of the brief asks for a report in the same two forms as the plan, and this is the one Semaphore keeps.\n\nThe plan is the promise and the observation is the reading. This document is neither: it is the comparison, and it carries enough of both that somebody reading it a year later does not need either file to understand what was decided.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "verified_at",
+    "plan_id",
+    "host",
+    "engine",
+    "observed_at",
+    "summary",
+    "results",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "The version of this contract. A consumer refuses a document whose version it does not implement rather than guessing at a field that moved."
+    },
+    "verified_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "tool_version": { "type": "string" },
+    "plan_id": { "type": "string", "pattern": "^[a-z0-9-]{4,80}$" },
+    "host": { "type": "string", "minLength": 1 },
+    "engine": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+    "version": {
+      "type": "string",
+      "description": "The engine version the plan requested."
+    },
+    "instance": { "type": "string", "minLength": 1 },
+    "observed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "When the instance was read. Not the same moment as the judgement, and the gap between them is worth being able to see."
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "fail", "unobserved"],
+      "description": "How many checks came to each outcome. Three, because a check that could not be run is not a check that passed.",
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "unobserved": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/result" }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified"],
+      "properties": {
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the instance is the one the plan describes. False when anything failed and false when anything could not be observed, because a run that proved nothing about a check has not verified it."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "outcome", "observed"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "description": "The kind the profile named, carried so a reader can tell which question was put."
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "outcome": {
+          "enum": ["pass", "fail", "unobserved"],
+          "description": "Three, and the third is the one worth spelling out. `unobserved` is a check the run could not put to the instance at all -- the instance was down, or the reading the check needs is not in the observation document. It is not a pass, it refuses the run, and it is kept apart from `fail` because what somebody does about it is different: a failure says the instance is wrong, and an unobserved check says nobody managed to ask (ADR-0025)."
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What was read back, in the terms the person reading the report thinks in. On a failure this is the whole of what makes the report useful."
+        },
+        "expected": {
+          "type": "string",
+          "description": "What the plan promised, where a check has a single thing to compare against."
+        },
+        "remediation": {
+          "type": "string",
+          "description": "What to do about it, from the profile. Present on anything that is not a pass."
+        },
+        "expression": {
+          "type": "string",
+          "description": "The profile's expression, where the check carried one. Recorded because a check that failed on its expression rather than on its kind is a different finding, and the report should not make somebody open the profile to tell which."
+        }
+      }
+    }
+  }
+}

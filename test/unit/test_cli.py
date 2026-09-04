@@ -7,12 +7,14 @@ import json
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _pytest.capture import CaptureFixture
 
 from basewright import __version__, cli
 from basewright.cli import VERBS, build_parser, main
+from basewright.planner import content_of, plan_id_for
 from basewright.planner.plan import SCHEMA_VERSION
 
 
@@ -38,22 +40,15 @@ def test_apply_is_not_a_verb_of_this_cli() -> None:
     assert "apply" not in VERBS
 
 
-#: The verbs that are still a promise. Each one exits 69 and points at the status page,
-#: so an unbuilt verb is a fact a reader can check rather than a thing that hangs.
-UNBUILT = ("verify",)
+def test_no_verb_is_unbuilt() -> None:
+    """There was a list of verbs that were still a promise, and it is empty.
 
-
-@pytest.mark.parametrize("verb", UNBUILT)
-def test_unbuilt_verbs_exit_predictably(verb: str) -> None:
-    assert main([verb]) == 69
-
-
-def test_the_list_of_unbuilt_verbs_is_kept_honest() -> None:
-    """A verb that starts working and stays on this list makes the test above vacuous."""
-    assert set(UNBUILT) < set(VERBS)
-    assert "gather" not in UNBUILT
-    assert "preflight" not in UNBUILT
-    assert "plan" not in UNBUILT
+    Kept as a test rather than deleted with the list, because it is the thing that would
+    have to stop being true for `69` to be needed again -- and if a verb is ever added
+    before it works, this is where somebody finds out what that costs.
+    """
+    for verb in sorted(VERBS):
+        assert main([verb]) != 69
 
 
 def test_version_string_is_set() -> None:
@@ -349,7 +344,6 @@ REACHABLE: tuple[tuple[int, list[str]], ...] = (
     (0, ["plan", "--from", str(GOLDEN_PLAN)]),
     (2, ["preflight", "--facts", str(FACTS / "crowded.json"), "--profile", str(PROFILE)]),
     (64, ["plan", "--from", "nowhere.json"]),
-    (69, ["verify"]),
 )
 
 
@@ -404,17 +398,23 @@ def test_the_readme_table_says_what_the_registry_says() -> None:
 # ------------------------------------------------------- what a verb declares it reads
 
 
-def test_an_unbuilt_verb_declares_no_inputs() -> None:
-    """A flag no implementation will ever read is a promise --help cannot keep."""
-    for verb in cli.UNBUILT:
-        with pytest.raises(SystemExit):
-            build_parser().parse_args([verb, "--facts", "anything.json"])
+def test_verify_reads_two_documents_and_no_facts() -> None:
+    """Verify judges an instance that exists, so a host's facts are not among its inputs.
+
+    A facts document describes a machine before anything was done to it. Verify is asked
+    afterwards, about the instance, and what it compares is the plan against the reading an
+    engine's role took. Accepting --facts would be a flag nothing reads.
+    """
+    parsed = build_parser().parse_args(["verify", "--plan", "p.json", "--observed", "o.json"])
+    assert parsed.plan and parsed.observed
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["verify", "--facts", "anything.json"])
 
 
-def test_the_verbs_that_are_built_all_read_facts() -> None:
-    """The other half of the check above: the flag is absent because verify never reads
-    a facts document, not because nothing does."""
-    for verb in set(VERBS) - set(cli.UNBUILT):
+def test_the_verbs_that_read_facts_all_declare_them() -> None:
+    """The other half of the check above: the flag is absent from verify because verify
+    never reads a facts document, not because nothing does."""
+    for verb in set(VERBS) - {"verify"}:
         assert build_parser().parse_args([verb, "--facts", "anything.json"]).facts
 
 
@@ -528,3 +528,131 @@ def test_reading_a_plan_back_will_not_take_an_engine_either(
 
     assert code == 64
     assert "cannot be combined with --engine" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------- verify, at the console
+
+#: A plan and a reading of the instance it produced. Both are real: the plan is a golden,
+#: and the reading is a document of the shape an engine's role writes.
+VERIFY_PLAN = ROOT / "test" / "fixtures" / "plan" / "applied.json"
+VERIFY_OBSERVED = ROOT / "test" / "fixtures" / "observations" / "observed.json"
+
+
+def test_verify_needs_both_documents_and_says_which(capsys: CaptureFixture[str]) -> None:
+    """Neither is optional, and the refusal says where the second one comes from: a reader
+    who has a plan and no reading has not run the playbook yet."""
+    assert main(["verify", "--plan", str(VERIFY_PLAN)]) == 64
+
+    refusal = capsys.readouterr().err
+    assert "--plan and --observed are both required" in refusal
+    assert "ansible/playbooks/verify.yml" in refusal
+
+
+def test_verify_reports_a_matching_instance_on_stdout(capsys: CaptureFixture[str]) -> None:
+    """A document goes to stdout and a refusal to stderr, as everywhere else here."""
+    assert main(["verify", "--plan", str(VERIFY_PLAN), "--observed", str(VERIFY_OBSERVED)]) == 0
+
+    printed = capsys.readouterr()
+    assert "VERIFIED" in printed.out
+    assert not printed.err
+
+
+def test_verify_refuses_an_instance_that_does_not_match(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    changed = _observation_with(tmp_path, {"parameters": {"settings": {"shared_buffers": 1}}})
+
+    assert main(["verify", "--plan", str(VERIFY_PLAN), "--observed", str(changed)]) == 2
+
+    printed = capsys.readouterr()
+    assert "FAILED" in printed.err
+    assert "shared_buffers" in printed.err
+
+
+def test_verify_writes_the_artifact_when_asked(capsys: CaptureFixture[str]) -> None:
+    code = main(
+        ["verify", "--plan", str(VERIFY_PLAN), "--observed", str(VERIFY_OBSERVED), "--json"]
+    )
+    document = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert document["result"] == {"verified": True}
+    assert document["schema_version"] == "1"
+
+
+def test_verify_refuses_a_reading_of_another_plan(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Refused as a whole rather than reported check by check. Two different sets of
+    promises compared line by line would read as a verdict about neither."""
+    elsewhere = _observation_with(tmp_path, {}, plan_id="0000deadbeef")
+
+    assert main(["verify", "--plan", str(VERIFY_PLAN), "--observed", str(elsewhere)]) == 2
+    assert "0000deadbeef" in capsys.readouterr().err
+
+
+def test_verify_refuses_a_reading_that_is_not_an_observation(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Read, and not acceptable: a refusal rather than a usage error."""
+    path = tmp_path / "observation.json"
+    path.write_text(json.dumps({"schema_version": "1"}), encoding="utf-8")
+
+    assert main(["verify", "--plan", str(VERIFY_PLAN), "--observed", str(path)]) == 2
+    assert "observation document" in capsys.readouterr().err
+
+
+def test_verify_reports_a_missing_reading_as_a_usage_error(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Not read at all: a mistyped path, and nothing was decided."""
+    missing = tmp_path / "nowhere.json"
+
+    assert main(["verify", "--plan", str(VERIFY_PLAN), "--observed", str(missing)]) == 64
+    # Wrapped to the shared report width, so the sentence is matched without its line breaks.
+    assert "is not an observation" in " ".join(capsys.readouterr().err.split())
+
+
+def test_verify_refuses_a_plan_that_has_been_edited(capsys: CaptureFixture[str]) -> None:
+    """The same check apply makes, by the same tool and in the same words. A verify report
+    against an edited plan would prove the instance matches something nobody approved."""
+    edited = ROOT / "test" / "fixtures" / "plan" / "edited.json"
+
+    assert main(["verify", "--plan", str(edited), "--observed", str(VERIFY_OBSERVED)]) == 2
+    assert "edited since it was produced" in capsys.readouterr().err
+
+
+def test_verify_says_so_when_the_plan_names_an_engine_that_is_not_installed(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The profile is what says what would count as proof, so a plan naming an engine this
+    installation has never heard of cannot be verified against anything."""
+    document = json.loads(VERIFY_PLAN.read_text(encoding="utf-8"))
+    document["request"]["engine"] = "nosuchdb"
+    # Renamed as well as edited. A plan is named after a digest of its own content, so a
+    # plan with a changed value and its old name is refused before the engine is looked up
+    # -- correctly, and by a different check than the one this case is about.
+    del document["plan_id"]
+    document["plan_id"] = plan_id_for(content_of(document))
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+
+    assert main(["verify", "--plan", str(path), "--observed", str(VERIFY_OBSERVED)]) == 64
+    assert "nosuchdb" in " ".join(capsys.readouterr().err.split())
+
+
+def _observation_with(
+    tmp_path: Path, changes: dict[str, Any], *, plan_id: str | None = None
+) -> Path:
+    """The matching reading, with one section altered. Built from the real one so a case
+    cannot quietly stop being about a document this repository actually produces."""
+    document = json.loads(VERIFY_OBSERVED.read_text(encoding="utf-8"))
+    for kind, change in changes.items():
+        for key, value in change.items():
+            document["observations"][kind][key].update(value)
+    if plan_id is not None:
+        document["plan_id"] = plan_id
+
+    path = tmp_path / "observation.json"
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    return path
