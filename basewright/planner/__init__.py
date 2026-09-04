@@ -14,9 +14,9 @@ from basewright.planner.errors import PlanError
 from basewright.planner.plan import (
     SCHEMA_VERSION,
     build_plan,
+    content_of,
     plan_id_for,
     rendered,
-    summarize,
 )
 from basewright.planner.schema import PLAN_SCHEMA, plan_problems
 from basewright.planner.sizing import (
@@ -36,11 +36,11 @@ __all__ = [
     "SizingError",
     "UnsizedParameterError",
     "build_plan",
+    "content_of",
     "evaluate",
     "evaluation_order",
     "plan_actions",
     "plan_id_for",
     "plan_problems",
     "rendered",
-    "summarize",
 ]

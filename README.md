@@ -75,65 +75,14 @@ reads each part:
        src="docs/assets/plan-anatomy-light.svg" width="900">
 </picture>
 
-The console rendering below is the shape it takes for a person. That part is a
-specification, not a capture: the reporter is still being built, and this section is
-replaced with real generated output — the same way every other image here is generated —
-as soon as it produces one.
+And here is one, rendered for the person who has to approve it. Every value carries the
+rule that produced it and the reasoning that rule ships with:
 
-```
-Basewright plan — db-prod-07.internal
-  generated 2026-09-03T10:14:22Z by basewright 0.4.1 · plan id 7f3a91
-
-REQUEST
-  engine            postgresql 16          (requested explicitly)
-  environment       production
-  instance          gitrez
-
-HOST
-  os                Ubuntu 24.04.1 LTS · x86_64 · kernel 6.8.0
-  cpu               8 cores
-  memory            32.0 GiB
-  storage           /var/lib  512 GiB free · SSD
-                    /backup   2.0 TiB free · HDD
-  time sync         chrony, synchronized
-
-PREFLIGHT                                                        14 pass · 2 warn · 0 block
-  WARN  disk.separate_wal    WAL would share a mount with data
-                             → performance and failure isolation are reduced
-  WARN  os.thp               transparent huge pages = always
-                             → apply will set it to madvise (reboot-persistent)
-
-PARAMETERS
-  shared_buffers            8GB        pg.shared_buffers      25% of 32GiB, capped at 8GB
-  effective_cache_size      22GB       pg.effective_cache_size
-  maintenance_work_mem      2GB        pg.maintenance_work_mem
-  work_mem                  10MB       pg.work_mem
-  max_connections           200        pg.max_connections
-  random_page_cost          1.1        pg.random_page_cost    SSD detected
-  effective_io_concurrency  200        pg.effective_io_concurrency
-  huge_pages                try        pg.huge_pages          RAM >= 32GB
-
-LAYOUT
-  data      /var/lib/basewright/postgresql/gitrez/data     0700  postgres:postgres
-  wal       /var/lib/basewright/postgresql/gitrez/wal      0700  postgres:postgres
-  log       /var/log/basewright/postgresql/gitrez          0750  postgres:postgres
-  backup    /backup/postgresql/gitrez                      0750  postgres:postgres
-
-CHANGES apply WOULD MAKE
-  + add apt repository apt.postgresql.org (pgdg)
-  + install postgresql-16, postgresql-client-16, postgresql-contrib-16
-  + create service account postgres (uid auto)
-  + create 4 directories
-  + initdb --data-checksums --locale=en_US.UTF-8 --encoding=UTF8
-  + write postgresql.conf (23 parameters), pg_hba.conf (3 rules)
-  ~ set vm.swappiness 60 → 10
-  ~ set transparent_hugepage always → madvise
-  + enable and start postgresql@16-gitrez
-
-  nothing existing is removed or overwritten.
-
-RESULT  plan is applicable · 2 warnings require acknowledgement (--accept-warnings)
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-rendered-dark.svg">
+  <img alt="A rendered plan: request, host, preflight, parameters with their reasons, layout, changes, secrets and the verdict"
+       src="docs/assets/plan-rendered-light.svg" width="900">
+</picture>
 
 Three properties make that artifact worth having:
 
@@ -232,13 +181,17 @@ it is not happy about, and those warnings are acknowledged before apply will run
 </picture>
 
 `plan` runs those rules again, refuses outright if any of them blocks, and otherwise sizes
-every parameter, resolves the layout, and works out everything `apply` would do. The
-artifact goes to `--json`; what it prints is a confirmation, until the reporter lands:
+every parameter, resolves the layout and works out everything `apply` would do. The
+rendering above is what it prints; `--json` writes the artifact itself.
+
+A plan is named after a digest of its own content, which makes the name a checksum as well
+as a name. `plan --from` reads one back — which is how the person who applies a plan can be
+somebody other than the person who produced it — and says so when the two no longer agree:
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-plan-dark.svg">
-  <img alt="basewright plan summarising the artifact it produced for a host"
-       src="docs/assets/cli-plan-light.svg" width="700">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-edited-dark.svg">
+  <img alt="basewright plan refusing a plan whose id no longer matches its content"
+       src="docs/assets/plan-edited-light.svg" width="700">
 </picture>
 
 `apply` and `verify` are still a promise, and say so.
@@ -356,6 +309,8 @@ make schema        # validate every profile against the profile JSON Schema
 make guard         # fail if an engine name leaks into the core
 make assets        # regenerate the diagrams and terminal captures in docs/assets/
 make assets-check  # fail if a committed image is stale
+make golden        # regenerate the golden plans, then read the diff
+make golden-check  # fail if a committed golden plan is stale
 make molecule      # run the Ansible role tests in containers (slow)
 make all           # everything CI runs on a pull request, except molecule
 ```

@@ -5,10 +5,17 @@ answer committed. It exists because a change to a sizing rule is a decision abou
 else's production database, and the way to review such a decision is to read the diff it
 makes to a plan rather than to read the arithmetic and imagine one.
 
-Two kinds are written. A host that can carry the instance gets its plan, as JSON, exactly
-as `basewright plan --json` would write it. A host that cannot gets the refusal, as text,
-because refusal is a first-class outcome and a change that quietly stops refusing a host
-is the change most worth noticing.
+Three kinds are written. A host that can carry the instance gets its plan, as JSON,
+exactly as `basewright plan --json` would write it, and the rendering of that plan, as
+text, so that a change to how a plan reads is a diff like any other. A host that cannot
+gets the refusal, because refusal is a first-class outcome and a change that quietly stops
+refusing a host is the change most worth noticing.
+
+One more file is written, and it is not a golden: `test/fixtures/plan/edited.json`, the
+first plan with a value changed and its name left alone. A plan is named after a digest of
+its own content, so that file is what a plan tampered with looks like, and it is generated
+here rather than committed by hand because a hand-written copy would fall behind the plan
+it is a copy of.
 
 Only one field is pinned: `generated_at`, which is the one thing two identical plans
 legitimately differ in. Everything else is real, `tool_version` included, so a release
@@ -24,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,11 +43,13 @@ from basewright.facts import load_facts  # noqa: E402
 from basewright.planner import build_plan, rendered  # noqa: E402
 from basewright.preflight import evaluate  # noqa: E402
 from basewright.profiles import load_profile  # noqa: E402
+from basewright.report.plan import render_plan  # noqa: E402
 from basewright.report.preflight import render_preflight  # noqa: E402
 from basewright.request import resolve_request  # noqa: E402
 
 GOLDEN = ROOT / "test" / "golden"
 HOSTS = ROOT / "test" / "fixtures" / "hosts"
+EDITED = ROOT / "test" / "fixtures" / "plan" / "edited.json"
 PROFILE = ROOT / "test" / "fixtures" / "profiles" / "exampledb"
 
 #: The moment every golden claims to have been generated at, and the date every rule that
@@ -67,8 +77,25 @@ def build() -> dict[Path, str]:
 
         plan = build_plan(facts, profile, request, preflight, now=PINNED)
         goldens[GOLDEN / "plan" / f"{name}.json"] = rendered(plan)
+        goldens[GOLDEN / "rendered" / f"{name}.txt"] = render_plan(plan) + "\n"
 
+    goldens[EDITED] = _tampered_with(goldens)
     return goldens
+
+
+def _tampered_with(goldens: dict[Path, str]) -> str:
+    """The first plan, with one value changed and its name left as it was.
+
+    Not a golden: a plan that is wrong on purpose, so that the check which notices a plan
+    has been edited has something real to notice. Derived from a plan rather than written
+    by hand, because a hand-written copy falls behind the thing it is a copy of.
+    """
+    first = next(path for path in goldens if path.parent.name == "plan")
+    plan = json.loads(goldens[first])
+    parameter = plan["parameters"][0]
+    parameter["value"] = parameter["value"] * 2
+    parameter["display"] = "somebody edited this"
+    return json.dumps(plan, indent=2, ensure_ascii=True) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         extra = [
             path
-            for directory in ("plan", "refused")
+            for directory in ("plan", "rendered", "refused")
             for path in sorted((GOLDEN / directory).glob("*"))
             if path not in goldens
         ]

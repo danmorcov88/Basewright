@@ -157,3 +157,91 @@ def test_preflight_reports_missing_facts_as_usage(capsys: CaptureFixture[str]) -
     arguments = ["preflight", "--facts", "nowhere.json", "--profile", str(PROFILE)]
     assert main(arguments) == 64
     capsys.readouterr()
+
+
+# --------------------------------------------------------- reading a plan back again
+
+
+ROOT = Path(__file__).resolve().parents[2]
+GOLDEN_PLAN = ROOT / "test" / "golden" / "plan" / "typical.json"
+EDITED_PLAN = ROOT / "test" / "fixtures" / "plan" / "edited.json"
+
+
+def test_a_plan_can_be_read_back_and_rendered(capsys: pytest.CaptureFixture[str]) -> None:
+    """A plan a second person cannot read is not reviewable by a second person, which is
+    the separation the artifact exists for."""
+    code = main(["plan", "--from", str(GOLDEN_PLAN)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert "BASEWRIGHT PLAN" in printed
+    assert "d6cb9a5adc52" in printed
+
+
+def test_a_plan_that_has_been_edited_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
+    """The id is a digest of the plan's own content, so it is a checksum as well as a
+    name, and this is the thing that checks it."""
+    code = main(["plan", "--from", str(EDITED_PLAN)])
+
+    refusal = capsys.readouterr().err
+    assert code == 2
+    assert "calls itself" in refusal
+    assert "edited since it was produced" in refusal
+
+
+def test_a_file_that_is_not_a_plan_is_refused_against_the_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    document = tmp_path / "not-a-plan.json"
+    document.write_text('{"schema_version": "1"}', encoding="utf-8")
+
+    code = main(["plan", "--from", str(document)])
+
+    assert code == 2
+    assert "is required but missing" in capsys.readouterr().err
+
+
+def test_a_file_that_is_not_json_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    document = tmp_path / "broken.json"
+    document.write_text("{", encoding="utf-8")
+
+    code = main(["plan", "--from", str(document)])
+
+    assert code == 2
+    assert "not readable JSON" in capsys.readouterr().err
+
+
+def test_a_missing_file_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(["plan", "--from", "nowhere.json"])
+
+    assert code == 64
+    assert "cannot read" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--json"],
+        ["--facts", str(ROOT / "test" / "fixtures" / "hosts" / "typical.json")],
+        ["--profile", str(ROOT / "test" / "fixtures" / "profiles" / "exampledb")],
+    ],
+    ids=["json", "facts", "profile"],
+)
+def test_reading_a_plan_and_producing_one_are_different_jobs(
+    extra: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(["plan", "--from", str(GOLDEN_PLAN), *extra])
+
+    assert code == 64
+    assert "cannot be combined with" in capsys.readouterr().err
+
+
+def test_every_refusal_wraps_to_a_width_a_terminal_can_show(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["plan", "--from", str(EDITED_PLAN)])
+
+    for line in capsys.readouterr().err.splitlines():
+        assert len(line) <= 88

@@ -39,7 +39,8 @@ Last reviewed: 2026-09-04.
 | The plan contract, frozen                         | done        |
 | Golden plan fixtures, and the refusals beside them | done       |
 | Plan determinism check in CI                      | done        |
-| Report rendering for a plan, human and JSON       | not started |
+| Report rendering for a plan, human and JSON       | done        |
+| Reading a plan back, and checking it is intact    | done        |
 | `verify`                                          | not started |
 
 ## Not yet wired into CI
@@ -130,9 +131,17 @@ confirmed, they are documented as assumptions rather than presented as policy.
 - The quickstart in the README is deliberately absent rather than aspirational. Every
   terminal image it carries is a real capture, including the ones of verbs that do not
   work yet.
-- The plan rendering in the README is still a specification, labelled as such. The
-  *artifact* now exists and its sections are drawn from the schema, but the console
-  rendering that lays every value out beside its rule is the reporter's, which is the next
-  slice. What `plan` prints today is a short confirmation, captured for real, and it says
-  so. It deliberately omits the moment the plan was written, so that two runs that decided
-  the same thing print the same thing and the capture can be checked byte for byte.
+- **The plan rendering in the README is a real capture.** The specification block that
+  stood there from the first commit is gone. The rendering is produced by
+  `plan --from`, against a golden plan whose moment is pinned, because a plan produced
+  from facts records when it was produced and a clock cannot be compared byte for byte.
+  That the pipeline still produces the plan correctly is proved by rendering the goldens
+  twice and diffing the bytes, which is a stronger check than a picture of one run.
+- **The report renders the document, not the objects that built it.** Verify reads
+  `plan.json` back off a disk months later, so there is one rendering and it works from
+  the artifact. `plan --from` is what proves that rather than asserting it.
+- **`plan --from` checks the plan is intact.** A plan is named after a digest of its own
+  content, so the name is a checksum too. A file whose id no longer matches what it says
+  has been edited since it was produced, and it is refused rather than rendered as though
+  it were the artifact somebody approved. Retrieval by plan id, rather than by path, needs
+  a plan store and is Phase B.

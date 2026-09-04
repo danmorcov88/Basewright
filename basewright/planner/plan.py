@@ -38,7 +38,18 @@ from basewright.profiles.model import Profile
 from basewright.request import Request
 from basewright.scope import build_scope
 
-__all__ = ["SCHEMA_VERSION", "build_plan", "plan_id_for", "rendered", "summarize"]
+__all__ = [
+    "SCHEMA_VERSION",
+    "build_plan",
+    "content_of",
+    "plan_id_for",
+    "rendered",
+]
+
+#: The two fields the digest is never taken over: the moment the plan was written, which
+#: two identical decisions differ in, and the plan's own name, which cannot be part of
+#: what produces it.
+_OUTSIDE_THE_DIGEST = ("plan_id", "generated_at")
 
 #: The version of the plan contract. Apply refuses a plan whose major version it does not
 #: implement, rather than guessing at a field that moved.
@@ -111,18 +122,30 @@ def build_plan(
     }
 
 
+def content_of(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """A finished plan, reduced to the part its name is taken over.
+
+    There is one definition of what a plan's content is, and it is here, so that the
+    planner computing an id and a reader checking one cannot disagree about it.
+    """
+    return {key: value for key, value in plan.items() if key not in _OUTSIDE_THE_DIGEST}
+
+
 def plan_id_for(content: Mapping[str, Any]) -> str:
     """The name a plan is known by: a digest of everything it says.
 
-    ``content`` is the plan without ``generated_at``, and it has to arrive that way. Two
-    runs that reached the same conclusions about the same host produce the same id, so a
-    plan can be found again from the id printed in a task log, and a plan that differs
-    from the one somebody approved says so in its name.
+    ``content`` is the plan without its own name and without the moment it was written,
+    and it has to arrive that way. Two runs that reached the same conclusions about the
+    same host produce the same id, so a plan can be found again from the id printed in a
+    task log, and a plan that differs from the one somebody approved says so in its name.
     """
-    if "generated_at" in content:
+    present = [field for field in _OUTSIDE_THE_DIGEST if field in content]
+    if present:
         raise PlanError(
-            "The plan id is computed over the plan without generated_at, which is the one "
-            "field two identical plans differ in. Build the document without it."
+            f"The plan id is computed over the plan without {' and without '.join(present)}. "
+            "Build the document without it, or reduce a finished plan with content_of: a "
+            "digest taken over its own answer, or over the second two runs differ in, is "
+            "not a name for what was decided."
         )
     canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:_ID_LENGTH]
@@ -176,41 +199,3 @@ def _account(profile: Profile) -> dict[str, Any]:
     if account.group is not None:
         entry["group"] = account.group
     return entry
-
-
-def summarize(plan: Mapping[str, Any]) -> str:
-    """A short confirmation of what was produced, for a terminal.
-
-    Deliberately short. The rendering that lays out every value beside the rule that
-    produced it is the reporter's, and writing half of it here would mean writing it twice.
-
-    The moment the plan was written is not printed. It is in the artifact, and leaving it
-    out here means two runs that decided the same thing print the same thing -- which is
-    what lets this output be captured into the documentation and checked byte for byte.
-    """
-    request = plan["request"]
-    counts = plan["preflight"]["summary"]
-    lines = [
-        f"PLAN  {request['host']} -- {request['engine']} {request['version']}, "
-        f"instance {request['instance']}",
-        f"  plan id {plan['plan_id']}",
-        "",
-        f"  preflight     {counts['pass']} pass -- {counts['warn']} warn -- "
-        f"{counts['block']} block -- {counts['skip']} skipped",
-        f"  parameters    {len(plan['parameters'])}",
-        f"  layout        {len(plan['layout']['paths'])} paths",
-        f"  changes       {len(plan['changes'])}",
-        f"  secrets       {len(plan['secrets'])}",
-        "",
-    ]
-
-    warnings = plan["result"]["warnings"]
-    if warnings:
-        lines.append(
-            f"RESULT  plan is applicable -- {warnings} "
-            f"{'warning requires' if warnings == 1 else 'warnings require'} acknowledgement"
-        )
-    else:
-        lines.append("RESULT  plan is applicable")
-    lines.append("Nothing on the host was changed. Run with --json for the artifact itself.")
-    return "\n".join(lines)

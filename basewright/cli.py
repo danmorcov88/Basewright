@@ -19,11 +19,20 @@ from basewright import __version__
 from basewright.facts import FactsError, HostFacts, load_facts
 from basewright.facts.errors import InvalidFactsError
 from basewright.placeholders import PlaceholderError
-from basewright.planner import PlanError, build_plan, rendered, summarize
+from basewright.planner import (
+    PlanError,
+    build_plan,
+    content_of,
+    plan_id_for,
+    plan_problems,
+    rendered,
+)
 from basewright.preflight import RuleError, document, evaluate
 from basewright.profiles import InvalidProfileError, ProfileError, load_profile
 from basewright.profiles.model import Profile
+from basewright.report.plan import render_plan
 from basewright.report.preflight import render_preflight
+from basewright.report.problems import REPORT_WIDTH, display, render_problems, wrapped
 from basewright.request import Request, RequestError, resolve_request
 from basewright.units import render_bytes
 
@@ -52,6 +61,11 @@ _FACTS_HELP = "Path to a facts document. Collecting from a live host is not buil
 #: by engine. When profiles/ has members, --engine becomes the way this is usually spelled.
 _PROFILE_HELP = "Path to the profile directory for the engine being provisioned."
 
+#: Reading a plan back is what makes it reviewable by somebody other than the person who
+#: produced it, which is the separation the whole artifact exists for. Retrieval by plan
+#: id needs a plan store and belongs to a later phase; this takes a path.
+_FROM_HELP = "Render a plan that already exists, instead of producing one."
+
 #: The environment an instance belongs to. Nothing gates on it yet; the plan records it,
 #: and the strictest of the plausible answers is the safest thing to assume.
 DEFAULT_ENVIRONMENT = "production"
@@ -75,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--facts", metavar="PATH", type=Path, help=_FACTS_HELP)
         if verb in {"preflight", "plan"}:
             _add_request_arguments(sub)
+        if verb == "plan":
+            sub.add_argument("--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP)
         sub.add_argument(
             "--json",
             dest="as_json",
@@ -198,6 +214,9 @@ def plan(args: argparse.Namespace) -> int:
     that produces one: a host that cannot carry the instance is reported as refused, with
     the rule and the way out, rather than as a plan somebody might apply anyway.
     """
+    if args.from_plan is not None:
+        return render_existing(args)
+
     prepared = _inputs(args, "plan")
     if isinstance(prepared, int):
         return prepared
@@ -224,7 +243,61 @@ def plan(args: argparse.Namespace) -> int:
     if args.as_json:
         print(rendered(artifact), end="")
     else:
-        print(summarize(artifact))
+        print(render_plan(artifact))
+    return EXIT_OK
+
+
+def render_existing(args: argparse.Namespace) -> int:
+    """Read a plan somebody else produced, check it is intact, and render it.
+
+    The check is not ceremony. A plan is named after a digest of its own content, so a
+    plan whose id does not match what it says has been edited since it was produced --
+    and the person about to approve it is entitled to be told that rather than to read
+    the edited version as though it were the artifact.
+    """
+    conflicting = [
+        name
+        for name, value in (
+            ("--facts", args.facts),
+            ("--profile", args.profile),
+            ("--json", args.as_json or None),
+        )
+        if value
+    ]
+    if conflicting:
+        _refuse(
+            f"basewright plan: --from cannot be combined with {', '.join(conflicting)}. "
+            "Reading a plan and producing one are different jobs, and the file --from "
+            "names is already the machine-readable artifact."
+        )
+        return EXIT_USAGE
+
+    try:
+        document = json.loads(args.from_plan.read_text(encoding="utf-8"))
+    except OSError as error:
+        _refuse(f"basewright plan: cannot read {display(args.from_plan)}: {error}")
+        return EXIT_USAGE
+    except json.JSONDecodeError as error:
+        _refuse(f"basewright plan: {display(args.from_plan)} is not readable JSON: {error}")
+        return EXIT_REFUSED
+
+    problems = plan_problems(document)
+    if problems:
+        print(render_problems(args.from_plan, "plan", problems), file=sys.stderr)
+        return EXIT_REFUSED
+
+    claimed = document["plan_id"]
+    actual = plan_id_for(content_of(document))
+    if claimed != actual:
+        _refuse(
+            f"basewright plan: {display(args.from_plan)} calls itself {claimed}, but its "
+            f"content produces {actual}. A plan is named after a digest of what it says, "
+            f"so this one has been edited since it was produced. Produce a fresh plan "
+            f"rather than applying this."
+        )
+        return EXIT_REFUSED
+
+    print(render_plan(document))
     return EXIT_OK
 
 
@@ -275,6 +348,16 @@ def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Re
         return EXIT_REFUSED
 
     return host, profile, request
+
+
+def _refuse(message: str) -> None:
+    """Print a refusal, wrapped the way every other report in the project is.
+
+    A refusal is read in a terminal and in a task log, and captured into a documentation
+    image. None of the three wraps kindly on its own.
+    """
+    for line in wrapped(message, width=REPORT_WIDTH):
+        print(line, file=sys.stderr)
 
 
 def render(host: HostFacts) -> str:

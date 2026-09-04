@@ -268,9 +268,10 @@ the situation this project exists to end, so the schema requires it.
 The arithmetic is data here and is evaluated in Python, where it can be unit-tested
 against fixture hosts — a machine with 2 GiB, one with 512 GiB, one with rotational disks.
 A sizing rule ships with a golden fixture, so a change to it shows up as a readable diff in
-the pull request rather than as a number that quietly moved. Regenerate them with
-`make golden`, and read the diff before committing it: that diff is the review of the
-decision, not a chore before the review.
+the pull request rather than as a number that quietly moved. Two files are written per host:
+the plan, and the plan as a person reads it, so a change to a value and a change to how it
+reads are both diffs. Regenerate them with `make golden`, and read the diff before
+committing it: that diff is the review of the decision, not a chore before the review.
 
 Four things around the expression are worth knowing.
 
