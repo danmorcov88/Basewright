@@ -81,12 +81,17 @@ os_families:
 defaults:
   port: 6432
   instance: main
+  locale: en_US.UTF-8
 ```
 
 `os_families` is the single list of families the profile supports; the support matrix and
 the package definitions are checked against it. `profile_version` is the version of the
 profile, not of the engine, and it is carried into `plan.json` so that a value in an old
 plan can be traced back to the rule that produced it.
+
+`defaults.locale` is what the instance is initialized with. It is optional: an engine that
+does not take one omits it, and the shared rule `locale.present` reports `skip` rather than
+checking for a locale nobody asked for.
 
 ### `support-matrix.yml` — what may be installed where
 
@@ -111,28 +116,94 @@ A version approaching its end of life produces a warning rather than a refusal: 
 operator is told, and decides. `status: allowed_with_warning` marks a version that is
 still maintained upstream but is not what a new instance should be built on.
 
-### `requirements.yml` — the gates this engine adds
+### `requirements.yml` — what refuses a host, and what this engine adds
 
-The shared gates apply to every engine. This file is what one engine adds to them.
+Twenty rules apply to every engine: the host has to be reachable and the account able to
+escalate, the operating system and architecture have to be in the support matrix, there
+have to be enough cores and enough memory, every path has to be on a writable mount with
+enough space, the port has to be free, nothing conflicting may be installed, the repository
+has to answer, the locale has to exist — and eight more that warn rather than refuse.
+
+None of those rules holds a number. Every threshold they compare against is declared here,
+and where a profile declares none the rule reports `skip` rather than inventing one
+([ADR-0015](../adr/0015-shared-gates-are-code.md)).
 
 ```yaml
 ---
 engine: exampledb
+minimums:
+  cores: 2
+  memory: 2GB
+preferences:
+  filesystems: [ext4, xfs]
+  transparent_hugepages: [madvise, never]
+  max_swappiness: 10
+conflicts:
+  - service: exampledb
+    match: prefix
+    description: an instance of this engine, from the vendor packages
 rules:
-  - id: exampledb.mem.min_total
+  - id: exampledb.port.unprivileged
     severity: block
-    title: Enough memory to run an instance at all
-    expr: host.memory.total_bytes >= 2 * GiB
+    title: A port the service account can bind without privilege
+    expr: request.port > 1024
     remediation: >-
-      Give the host at least 2 GiB of memory, or provision this instance somewhere else.
+      Choose a port above 1024. The service account this engine runs as is unprivileged
+      and cannot bind a reserved port.
 ```
 
-There are two severities and there is no third. There is no flag that turns a block into a
-warning: if a block is wrong, the rule is wrong, and the rule is fixed in Git where a
-reviewer can see it. A rule ships with a test for both of its outcomes.
+`minimums` and `preferences` mirror the two severities: what is under a minimum refuses the
+host, and what falls short of a preference is reported and provisioned anyway.
 
-`remediation` is not optional and is not decoration. "Refused because /backup has 12 GiB
-free and this profile requires 100 GiB" is a useful answer; "preflight failed" is not.
+`conflicts` is how `engine.not_installed` works at all. The core recognises no service by
+name — it compares what the host reports against what is declared here. `match: prefix`
+covers the per-version and per-instance units a package manager installs, so a profile
+names the family once rather than enumerating it.
+
+`rules` is what this engine adds on top. There are two severities and there is no third,
+and there is no flag that turns a block into a warning: if a block is wrong, the rule is
+wrong, and the rule is fixed in Git where a reviewer can see it. A rule ships with a test
+for both of its outcomes.
+
+`remediation` is not optional and is not decoration. "Refused because /backup has 2.0 GiB
+free and this profile requires 50GB" is a useful answer; "preflight failed" is not.
+
+#### What an `expr` may say
+
+An expression is read by a small interpreter that cannot run anything
+([ADR-0014](../adr/0014-rules-are-expressions-not-code.md)). The syntax is Python's, but
+only part of it is a language here: constants, names, attributes, arithmetic, comparison,
+`and` / `or` / `not`, a conditional expression, and tuples for membership tests. A call, a
+subscript, a comprehension, a formatted string or exponentiation is refused when the profile
+is read, with the column it appears at.
+
+What an expression may read:
+
+| Name             | Carries                                                            |
+| ---------------- | ------------------------------------------------------------------ |
+| `host`           | `os`, `arch`, `cpu`, `memory`, `kernel`, `time_sync`, `firewall`, `privileges`, `locales` |
+| `request`        | `host`, `engine`, `version`, `environment`, `instance`, `port`, `chosen_version` |
+| `path.<purpose>` | `path`, `mount`, `filesystem`, `free_bytes`, `total_bytes`, `rotational`, `read_only` |
+| `profile`        | `engine`, `version`, `default_version`, `default_port`, `default_instance`, `locale` |
+| units            | `B`, `KB`, `MB`, `GB`, `TB`, `PB`, and the binary `KiB` through `PiB` |
+| `none`           | what an unset fact is compared against                              |
+
+Two failures mean different things and are reported differently. A fact the contract defines
+but this host did not report makes the rule report `skip` — a fact nobody collected is not a
+host that fell short. A name the vocabulary does not define at all refuses the run, because
+a misspelling that skipped quietly would be a gate that has stopped guarding.
+
+`applies_to` is a second expression deciding whether the rule is evaluated at all. A rule
+that does not apply reports `skip`:
+
+```yaml
+  - id: exampledb.storage.rotational
+    severity: warn
+    title: Data directory on rotational storage
+    expr: not path.data.rotational
+    applies_to: path.data.rotational is not none
+    remediation: Move the data path to solid state storage if latency matters here.
+```
 
 ### `layout.yml` — where the files go
 
@@ -144,6 +215,11 @@ paths:
     default: /var/lib/basewright/{{ engine }}/{{ instance }}/data
     mode: "0700"
     min_free: 20GB
+  journal:
+    default: /var/lib/basewright/{{ engine }}/{{ instance }}/journal
+    mode: "0700"
+    min_free: 10GB
+    prefer_separate_from: [data]
 service_account:
   name: exampledb
   create_if_missing: true
@@ -152,7 +228,19 @@ service_account:
 
 Which purposes a profile defines is the engine's business; `data` and `log` are the two
 every engine has. Each `min_free` becomes a block threshold, so it has to be a number
-someone will defend in a review.
+someone will defend in a review. It is quoted back in the refusal exactly as it is written
+here, so `20GB` reads as `20GB` rather than being re-rendered as `18.6 GiB` and sending the
+reader off to check whether those are the same number.
+
+`prefer_separate_from` names the other purposes this path would rather not share a mount
+with. Sharing only warns: two paths on one filesystem compete for the same free space and
+the same queue and lose each other's failure isolation, but the instance runs. The purposes
+named have to exist, which the loader checks — one that is not there reads as a rule about
+storage and is silently no rule at all.
+
+Placeholders in a path are substituted, and that is all that happens to it: `{{ engine }}`,
+`{{ instance }}` and `{{ version }}`. Anything else is an error rather than a directory with
+braces in its name.
 
 ### `sizing.yml` — the parameters, and why
 

@@ -10,16 +10,19 @@ paths:
     default: /var/lib/basewright/{{ engine }}/{{ instance }}/journal
     mode: "0700"
     min_free: 10GB
+    prefer_separate_from: [data]
     description: The write-ahead journal. Ideally on a separate mount from the data path.
   log:
     default: /var/log/basewright/{{ engine }}/{{ instance }}
     mode: "0750"
     min_free: 2GB
+    prefer_separate_from: [data]
     description: Server logs, rotated by the packaged configuration.
   backup:
     default: /backup/{{ engine }}/{{ instance }}
     mode: "0750"
     min_free: 50GB
+    prefer_separate_from: [data]
     description: >-
       Where a backup tool would write. Basewright creates the path and proves the service
       account can write to it; scheduling backups is another tool's job.

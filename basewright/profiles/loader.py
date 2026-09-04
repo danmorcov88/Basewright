@@ -26,9 +26,12 @@ import yaml
 
 from basewright.profiles.errors import InvalidProfileError, MissingProfileError
 from basewright.profiles.model import (
+    Conflict,
     GateRule,
+    Minimums,
     PackageSet,
     PathSpec,
+    Preferences,
     Profile,
     Repository,
     ServiceAccount,
@@ -160,6 +163,7 @@ def _reconcile(documents: Documents) -> Iterator[Problem]:
     yield from _families_are_installable(documents["packages.yml"], families)
     yield from _identifiers_are_unique(documents)
     yield from _parameters_are_set_once(documents["sizing.yml"])
+    yield from _separations_name_real_paths(documents["layout.yml"])
 
 
 def _engine_agrees(documents: Documents, engine: str) -> Iterator[Problem]:
@@ -282,11 +286,40 @@ def _parameters_are_set_once(sizing: Document) -> Iterator[Problem]:
 # ------------------------------------------------------------------------------ building
 
 
+def _separations_name_real_paths(layout: Document) -> Iterator[Problem]:
+    """A path can only prefer to be separate from a path the layout defines.
+
+    A purpose that does not exist reads as a rule about storage and is silently no rule
+    at all, which is the worst of the two ways to be wrong about a warning.
+    """
+    paths: Mapping[str, Document] = layout["paths"]
+    for purpose, spec in paths.items():
+        for position, other in enumerate(spec.get("prefer_separate_from", [])):
+            if str(other) == purpose:
+                yield Problem(
+                    file="layout.yml",
+                    location=f"paths.{purpose}.prefer_separate_from[{position}]",
+                    message=f"is {purpose!r}, which is the path itself",
+                    hint="A path always shares a mount with itself. Name a different purpose.",
+                )
+            elif str(other) not in paths:
+                yield Problem(
+                    file="layout.yml",
+                    location=f"paths.{purpose}.prefer_separate_from[{position}]",
+                    message=f"is {other!r}, which this layout does not define",
+                    hint=(
+                        "A path can only be kept apart from one that exists. Paths here "
+                        f"are: {', '.join(sorted(paths))}."
+                    ),
+                )
+
+
 def _build(directory: Path, documents: Documents) -> Profile:
     """Turn seven validated documents into one profile. No decisions are taken here."""
     profile = documents["profile.yml"]
     matrix = documents["support-matrix.yml"]
     layout = documents["layout.yml"]
+    requirements = documents["requirements.yml"]
 
     return Profile(
         root=directory,
@@ -297,10 +330,14 @@ def _build(directory: Path, documents: Documents) -> Profile:
         os_families=tuple(profile["os_families"]),
         default_port=int(profile["defaults"]["port"]),
         default_instance=profile["defaults"]["instance"],
+        default_locale=profile["defaults"].get("locale"),
         documentation=profile.get("documentation"),
         default_version=matrix["default_version"],
         versions=tuple(_version(entry) for entry in matrix["versions"]),
-        gates=tuple(_gate(rule) for rule in documents["requirements.yml"]["rules"]),
+        gates=tuple(_gate(rule) for rule in requirements["rules"]),
+        minimums=_minimums(requirements.get("minimums", {})),
+        preferences=_preferences(requirements.get("preferences", {})),
+        conflicts=tuple(_conflict(entry) for entry in requirements.get("conflicts", [])),
         paths=_paths(layout["paths"]),
         service_account=_service_account(layout["service_account"]),
         sizing=tuple(_sizing(rule) for rule in documents["sizing.yml"]["rules"]),
@@ -337,6 +374,26 @@ def _gate(rule: Document) -> GateRule:
     )
 
 
+def _minimums(minimums: Document) -> Minimums:
+    return Minimums(cores=minimums.get("cores"), memory=minimums.get("memory"))
+
+
+def _preferences(preferences: Document) -> Preferences:
+    return Preferences(
+        filesystems=tuple(preferences.get("filesystems", ())),
+        transparent_hugepages=tuple(preferences.get("transparent_hugepages", ())),
+        max_swappiness=preferences.get("max_swappiness"),
+    )
+
+
+def _conflict(entry: Document) -> Conflict:
+    return Conflict(
+        service=entry["service"],
+        description=" ".join(str(entry["description"]).split()),
+        match=entry.get("match", "exact"),
+    )
+
+
 def _sizing(rule: Document) -> SizingRule:
     return SizingRule(
         identifier=rule["id"],
@@ -358,6 +415,7 @@ def _paths(paths: Mapping[str, Document]) -> dict[str, PathSpec]:
             default=spec["default"],
             mode=spec["mode"],
             min_free=spec.get("min_free"),
+            prefer_separate_from=tuple(spec.get("prefer_separate_from", ())),
             description=" ".join(str(spec.get("description", "")).split()),
         )
         for purpose, spec in paths.items()

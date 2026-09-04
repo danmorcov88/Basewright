@@ -11,6 +11,58 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,31}$"
     },
+    "minimums": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The floors the shared blocking rules compare a host against. A number here refuses a host, so it is a number someone has to be willing to defend in a review.",
+      "properties": {
+        "cores": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Fewest cores an instance of this engine may be provisioned on. Below it the shared rule cpu.min_cores blocks. Absent means the engine states no floor and the rule is skipped rather than assumed."
+        },
+        "memory": {
+          "type": "string",
+          "pattern": "^[0-9]+([.][0-9]+)?(B|[KMGTP]B|[KMGTP]iB)$",
+          "description": "Least memory an instance of this engine may be provisioned on, as a quantity with its unit. Below it the shared rule mem.min_total blocks. Absent means the engine states no floor and the rule is skipped rather than assumed."
+        }
+      }
+    },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the engine would rather have, as distinct from what it requires. Everything here feeds a shared rule of severity warn: it is reported, acknowledged and provisioned anyway.",
+      "properties": {
+        "filesystems": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]{1,15}$" },
+          "description": "The filesystems this engine is normally run on. A path on anything else warns, because it is ground the defaults were not tuned against."
+        },
+        "transparent_hugepages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["always", "madvise", "never"],
+            "description": "The three settings the kernel has. Anything else is a value the host could not have reported, so it is refused here rather than compared against and quietly never matching."
+          },
+          "description": "The transparent huge page settings this engine is content with. Engines disagree about this, so the core cannot know the answer and the profile states it."
+        },
+        "max_swappiness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "The highest vm.swappiness this engine should be run at. Above it the shared rule os.swappiness warns."
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conflict" },
+      "description": "What already being installed means this host cannot be provisioned. The core recognises no service by name: it compares what the host reports against what is declared here, which is the only reason the shared rule engine.not_installed can exist at all."
+    },
     "rules": {
       "type": "array",
       "items": { "$ref": "#/$defs/rule" },
@@ -18,6 +70,28 @@
     }
   },
   "$defs": {
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "description"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$",
+          "description": "A service name as the host reports it, matched exactly or as a prefix."
+        },
+        "match": {
+          "enum": ["exact", "prefix"],
+          "default": "exact",
+          "description": "How the name is compared. A prefix covers the per-version and per-instance units a package manager installs, without a profile having to list them or ship a pattern that can backtrack."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the conflicting thing is, in the words the refusal prints. The reader has to be able to tell an instance of this engine from something that merely shares its name."
+        }
+      }
+    },
     "rule": {
       "type": "object",
       "additionalProperties": false,

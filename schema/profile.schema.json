@@ -50,6 +50,11 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_]{0,30}$",
           "description": "The instance name used when the request does not supply one."
+        },
+        "locale": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.@-]{1,31}$",
+          "description": "The locale the instance is initialized with, spelled as the host names it. Initialization fails at the last possible moment if the machine does not have it, so it is checked at the first. Absent means the engine does not take one and the shared rule locale.present is skipped."
         }
       }
     },
