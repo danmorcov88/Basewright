@@ -25,6 +25,8 @@ from basewright.profiles.locate import (
 )
 from basewright.profiles.model import (
     GateRule,
+    Initialization,
+    InitializationSetting,
     PackageSet,
     PathSpec,
     Profile,
@@ -42,6 +44,8 @@ from basewright.schema import schema_directory
 __all__ = [
     "PROFILE_FILES",
     "GateRule",
+    "Initialization",
+    "InitializationSetting",
     "InvalidProfileError",
     "MissingProfileError",
     "PackageSet",

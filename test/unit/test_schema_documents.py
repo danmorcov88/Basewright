@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from basewright.planner.plan import SCHEMA_VERSION
 from basewright.planner.schema import PLAN_SCHEMA
 from basewright.profiles.schema import PROFILE_FILES, schema_name_for
 from basewright.schema import schema_directory
@@ -128,3 +129,18 @@ def test_enumerations_explain_themselves(path: Path) -> None:
         f"{path.name} closes a set of values without saying why at: {', '.join(undocumented)}.\n"
         "The loader prints these descriptions as the remedy when a profile violates them."
     )
+
+
+def test_the_planner_and_the_schema_agree_on_which_contract_this_is() -> None:
+    """The one place the plan's version is pinned as a literal.
+
+    It is written twice -- once as the constant the planner stamps into every plan, once
+    as the const the schema will accept -- and the two disagreeing means every plan this
+    build produces fails validation against the schema it claims to be written to. So the
+    agreement is asserted here, and every other test reads the constant rather than
+    repeating the number, which is what makes a version of the contract a small change
+    rather than a hunt.
+    """
+    schema = load(schema_directory() / "plan.schema.json")
+
+    assert schema["properties"]["schema_version"]["const"] == SCHEMA_VERSION

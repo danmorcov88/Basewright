@@ -9,6 +9,7 @@ nothing else, finds every value it needs in it.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ from basewright.facts import HostFacts, load_facts
 from basewright.planner import PlanError, build_plan, plan_id_for, rendered
 from basewright.planner.schema import plan_problems
 from basewright.preflight import evaluate
-from basewright.profiles import Profile, load_profile
+from basewright.profiles import Initialization, InitializationSetting, Profile, load_profile
 from basewright.request import Request, resolve_request
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -146,6 +147,92 @@ def test_a_setting_already_at_the_wanted_value_is_not_listed_as_a_change(
 
     assert all(entry["observed"] == entry["value"] for entry in large["tunables"])
     assert not [entry for entry in large["changes"] if entry["action"] == "modify"]
+
+
+# --------------------------------------------------------------- creating the instance
+
+
+def initializing(profile: Profile, **settings: Any) -> Profile:
+    """The same profile, with something to create."""
+    return replace(
+        profile,
+        initialization=Initialization(
+            description="Create the instance, once and for the life of it.",
+            settings=tuple(
+                InitializationSetting(name=name, value=value, why=f"because of {name}")
+                for name, value in settings.items()
+            ),
+        ),
+    )
+
+
+def test_a_profile_that_creates_nothing_carries_no_initialization(
+    plan: dict[str, Any],
+) -> None:
+    """An engine whose packages leave a running instance behind them has nothing to
+    create, and the section is absent rather than empty. A heading over nothing reads as
+    something missing."""
+    assert "initialization" not in plan
+    assert not [entry for entry in plan["changes"] if "initialize" in entry["description"]]
+
+
+def test_what_creating_the_instance_takes_is_carried_with_its_reasoning(
+    profile: Profile,
+) -> None:
+    """Apply reads the plan and nothing else, so a choice made while creating an instance
+    has to be in it -- and it is the one choice that cannot be made again differently, so
+    the reasoning travels with it rather than being looked up later."""
+    plan = plan_for(initializing(profile, encoding="UTF8", checksums=True, buffers=64), "typical")
+
+    assert plan["initialization"]["locale"] == "en_US.UTF-8"
+    assert [entry["name"] for entry in plan["initialization"]["settings"]] == [
+        "encoding",
+        "checksums",
+        "buffers",
+    ]
+    assert all(entry["why"] for entry in plan["initialization"]["settings"])
+
+
+def test_the_locale_comes_from_the_profile_rather_than_from_a_second_spelling(
+    profile: Profile,
+) -> None:
+    """A shared rule already blocks a host that has not generated it, and it reads
+    defaults.locale. Declaring it twice would be two things to keep in step, and the plan
+    would eventually promise a locale nothing had checked for."""
+    created = initializing(profile, encoding="UTF8")
+
+    assert plan_for(created, "typical")["initialization"]["locale"] == profile.default_locale
+    assert (
+        "locale" not in plan_for(replace(created, default_locale=None), "typical")["initialization"]
+    )
+
+
+def test_creating_the_instance_is_a_change_somebody_reads_before_approving_it(
+    profile: Profile,
+) -> None:
+    """Spelled out rather than counted, unlike the parameters in a configuration file.
+    There are three of them, they cannot be changed afterwards, and they are what somebody
+    approving a plan is reading this line to find out."""
+    plan = plan_for(initializing(profile, encoding="UTF8", checksums=True), "typical")
+    change = next(entry for entry in plan["changes"] if "initialize" in entry["description"])
+
+    assert change["action"] == "add"
+    assert "locale=en_US.UTF-8" in change["description"]
+    assert "encoding=UTF8" in change["description"]
+    assert "checksums=true" in change["description"]
+
+
+def test_the_instance_is_created_after_its_directories_and_before_its_configuration(
+    profile: Profile,
+) -> None:
+    """The order of this list is the order the phases run in. A configuration file written
+    before the thing that would read it exists is a file the next step overwrites."""
+    plan = plan_for(initializing(profile, encoding="UTF8"), "typical")
+    descriptions = [entry["description"] for entry in plan["changes"]]
+    at = next(index for index, text in enumerate(descriptions) if "initialize" in text)
+
+    assert "directories" in descriptions[at - 1]
+    assert descriptions[at + 1].startswith("write ")
 
 
 def test_nothing_is_ever_removed(plan: dict[str, Any]) -> None:

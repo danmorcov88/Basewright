@@ -61,6 +61,7 @@ def render_plan(document: Mapping[str, Any]) -> str:
         _preflight(document),
         _parameters(document),
         _layout(document),
+        _initialization(document),
         _changes(document),
         _secrets(document),
         _result(document),
@@ -282,6 +283,47 @@ def _layout(document: Mapping[str, Any]) -> list[str]:
         )
     )
     return lines
+
+
+# ---------------------------------------------------------------------- initialization
+
+
+def _initialization(document: Mapping[str, Any]) -> list[str]:
+    """The one thing apply does that it cannot later do differently.
+
+    Every other section describes something a second run can put right: a parameter can be
+    resized, a configuration file rewritten, a host setting set again. What is created here
+    is created once, and changing any of it afterwards means dumping and reloading whatever
+    is by then inside it. So each choice carries its reasoning in full, the way a sized
+    parameter does, rather than being listed as a value somebody can look up later.
+
+    A profile that declares none has an engine whose packages leave a running instance
+    behind them, and the section is absent rather than empty -- there is nothing to say,
+    and a heading over nothing reads as something missing.
+    """
+    initialization = document.get("initialization")
+    if initialization is None:
+        return []
+
+    settings = initialization["settings"]
+    name_width = _column_width((entry["name"] for entry in settings), lower=16, upper=24)
+
+    lines = ["INITIALIZATION"]
+    lines.extend(_note(initialization["description"]))
+    lines.append("")
+    if "locale" in initialization:
+        lines.extend(_row(" " * _INDENT, "locale", name_width, initialization["locale"]))
+    for entry in settings:
+        lines.extend(_row(" " * _INDENT, entry["name"], name_width, _value(entry["value"])))
+        lines.extend(_hanging_note(entry["why"], _INDENT + 2))
+    return lines
+
+
+def _value(value: Any) -> str:
+    """A choice as the plan prints it, in the words the engine uses for it."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 # ----------------------------------------------------------------------------- changes

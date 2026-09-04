@@ -85,6 +85,34 @@ def test_every_sizing_rule_explains_itself(profile: Profile) -> None:
         assert rule.parameter not in rule.why, f"{rule.id} restates itself instead of arguing"
 
 
+def test_every_choice_made_creating_the_instance_explains_itself(profile: Profile) -> None:
+    """A profile need not create anything, and one that does owes a reason for every
+    choice. This is the step that cannot be repeated differently: the reasoning behind it
+    is read by whoever has to decide, years later, whether the instance was built right."""
+    if profile.initialization is None:
+        return
+
+    assert profile.initialization.description
+    assert profile.initialization.settings
+    for setting in profile.initialization.settings:
+        assert setting.why, f"{profile.engine} creates with {setting.name} and does not say why"
+
+
+def test_a_profile_that_creates_an_instance_names_the_locale_it_creates_it_with(
+    profile: Profile,
+) -> None:
+    """The shared rule that blocks a host without the locale reads defaults.locale, and
+    the plan carries the same value into apply. A profile that creates something without
+    one would have apply choosing a locale nothing had checked the host for."""
+    if profile.initialization is None:
+        return
+
+    assert profile.default_locale, (
+        f"{profile.engine} creates an instance and declares no defaults.locale, so nothing "
+        "would have proved the host has the locale the instance is created with."
+    )
+
+
 def test_every_gate_says_what_would_change_it(profile: Profile) -> None:
     """A refusal that does not name the way out is a refusal somebody works around."""
     for rule in profile.gates:

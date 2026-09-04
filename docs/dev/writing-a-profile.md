@@ -26,7 +26,7 @@ profiles/<engine>/
 ├── layout.yml            # paths, modes, the service account
 ├── sizing.yml            # parameter rules, each with its reason
 ├── packages.yml          # repositories, packages, service unit, per OS family
-├── apply.yml             # configuration files, host settings, secrets
+├── apply.yml             # configuration files, initialization, host settings, secrets
 ├── verify.yml            # assertions about the running instance
 └── templates/            # configuration templates
 ```
@@ -337,6 +337,16 @@ configuration:
     mode: "0640"
     carries_parameters: true
     description: The server configuration, where the sized parameters land.
+initialization:
+  description: >-
+    Create the instance in the data directory the plan names, with the locale this host
+    was already checked for.
+  settings:
+    - name: encoding
+      value: UTF8
+      why: >-
+        Chosen once and for the life of the instance; changing it means a dump and a
+        reload of everything in it.
 tunables:
   - name: vm.swappiness
     value: 10
@@ -371,9 +381,25 @@ A secret has a name, a place and a description. There is no fourth field, here o
 plan, and that is the whole of the protection: a value cannot leak into a document that has
 nowhere to put one.
 
-`tunables` and `secrets` may both be left out, and leaving them out says the engine asks
-nothing of the host and needs no secret. `configuration` is required, because every engine
-writes something.
+`initialization` is what creating the instance takes, for an engine whose packages install
+a server without making one. It is the only thing on this list that cannot be done again
+differently: an encoding or a locale chosen here is chosen for the life of the instance,
+and changing either afterwards means a dump and a reload. So every setting carries a `why`
+that is rendered into the plan in full, the way a sized parameter's is, and the plan lists
+the settings by name in its change list rather than counting them.
+
+The core reads none of those settings. It carries the name, the value and the reasoning
+into the plan, and the engine's own role knows what each one is a flag for — which is the
+only arrangement under which the core can describe an act it does not understand. The
+locale is deliberately *not* among them: it is declared once in `profile.yml`, because the
+shared `locale.present` rule blocks a host that has not generated it, and a second spelling
+here would be a second thing to keep in step.
+
+`initialization`, `tunables` and `secrets` may all be left out. Leaving `initialization`
+out says the packages leave a running instance behind them, and the plan then carries no
+initialization section rather than an empty one. Leaving the other two out says the engine
+asks nothing of the host and needs no secret. `configuration` is required, because every
+engine writes something.
 
 
 ### `verify.yml` — proving the instance matches its plan

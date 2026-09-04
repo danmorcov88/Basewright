@@ -209,3 +209,59 @@ def test_a_host_that_reported_no_clock_is_simply_not_described(
     del silent["host"]["time_sync"]
 
     assert "time sync" not in render_plan(silent)
+
+
+# --------------------------------------------------------- what creating it takes
+
+#: The plan of an engine that has something to create. The fixture profile has nothing, so
+#: the rendering of this section is read off the shipped one -- which is the same document
+#: read by the same code, and the reason there is only one rendering.
+POSTGRESQL_PLAN = ROOT / "test" / "golden" / "postgresql" / "plan" / "typical.json"
+
+
+@pytest.fixture(scope="module")
+def creating() -> dict[str, Any]:
+    document: dict[str, Any] = json.loads(POSTGRESQL_PLAN.read_text(encoding="utf-8"))
+    return document
+
+
+def test_every_choice_made_creating_the_instance_carries_its_reasoning(
+    creating: dict[str, Any],
+) -> None:
+    """This is the one section describing something a second run cannot put right, so its
+    reasoning is worth more than any other section's, not less."""
+    rendered = render_plan(creating)
+    section = rendered[rendered.index("INITIALIZATION") : rendered.index("CHANGES apply")]
+
+    for setting in creating["initialization"]["settings"]:
+        assert setting["name"] in section
+        assert setting["why"].split(".")[0] in " ".join(section.split())
+
+
+def test_the_locale_is_shown_beside_the_choices_made_with_it(
+    creating: dict[str, Any],
+) -> None:
+    rendered = render_plan(creating)
+    section = rendered[rendered.index("INITIALIZATION") : rendered.index("CHANGES apply")]
+
+    assert creating["initialization"]["locale"] in section
+
+
+def test_a_boolean_choice_reads_as_a_word_rather_than_as_python(
+    creating: dict[str, Any],
+) -> None:
+    """`True` with a capital letter is a language showing through a document written for
+    somebody who does not use it."""
+    rendered = render_plan(creating)
+
+    assert "True" not in rendered
+    assert "data_checksums    true" in rendered
+
+
+def test_a_plan_that_creates_nothing_has_no_heading_over_nothing(
+    typical: dict[str, Any],
+) -> None:
+    """The fixture engine's packages leave a running instance behind them. An empty
+    section would read as something the plan failed to say."""
+    assert "initialization" not in typical
+    assert "INITIALIZATION" not in render_plan(typical)

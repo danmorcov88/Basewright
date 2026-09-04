@@ -17,6 +17,10 @@
       "items": { "$ref": "#/$defs/configuration_file" },
       "description": "Every configuration file apply writes, in the order it writes them. An existing file is never overwritten without a timestamped copy left beside it, which is a property of apply rather than something a profile can turn off."
     },
+    "initialization": {
+      "$ref": "#/$defs/initialization",
+      "description": "What creating the instance takes, for an engine whose packages install a server without making one. Absent means installing is all there is to it, and the plan carries no initialization section. This is the one step apply performs that cannot be performed again differently: a locale or an encoding chosen here is chosen for the life of the instance, which is why it is declared where a reviewer sees it rather than defaulted inside a role."
+    },
     "tunables": {
       "type": "array",
       "items": { "$ref": "#/$defs/tunable" },
@@ -67,6 +71,46 @@
           "minLength": 10,
           "maxLength": 200,
           "description": "What the file is for, rendered into the plan next to the change."
+        }
+      }
+    },
+    "initialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "settings"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 300,
+          "description": "What creating the instance does, rendered into the plan above the settings it does it with."
+        },
+        "settings": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/initialization_setting" },
+          "description": "The choices made while the instance is created. The locale is not among them: it is declared once, in profile.yml, because a shared rule blocks a host that has not got it, and a second spelling of it here would be a second thing to keep in step."
+        }
+      }
+    },
+    "initialization_setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "why"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$",
+          "description": "The choice as the engine names it. The core never reads one: it carries the name, the value and the reasoning into the plan, and the engine's own role knows what to do with them."
+        },
+        "value": {
+          "type": ["string", "number", "boolean"],
+          "description": "What it is created with. There is no observed field beside it, because there is nothing yet to observe."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 10,
+          "description": "The reasoning, rendered into the plan. This step cannot be repeated differently without destroying what it made, so its reasoning is the reasoning most worth writing down."
         }
       }
     },

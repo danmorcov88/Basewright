@@ -30,6 +30,8 @@ from basewright.profiles.model import (
     ConfigurationFile,
     Conflict,
     GateRule,
+    Initialization,
+    InitializationSetting,
     Minimums,
     PackageSet,
     PathSpec,
@@ -426,6 +428,7 @@ def _build(directory: Path, documents: Documents) -> Profile:
             _configuration(entry) for entry in documents["apply.yml"]["configuration"]
         ),
         tunables=tuple(_tunable(entry) for entry in documents["apply.yml"].get("tunables", [])),
+        initialization=_initialization(documents["apply.yml"].get("initialization")),
         secrets=tuple(_secret(entry) for entry in documents["apply.yml"].get("secrets", [])),
         checks=tuple(_check(entry) for entry in documents["verify.yml"]["checks"]),
     )
@@ -551,6 +554,28 @@ def _configuration(entry: Document) -> ConfigurationFile:
         description=" ".join(str(entry["description"]).split()),
         owner=entry.get("owner"),
         carries_parameters=bool(entry.get("carries_parameters", False)),
+    )
+
+
+def _initialization(entry: Document | None) -> Initialization | None:
+    """What creating the instance takes, or None for an engine that needs nothing.
+
+    Absent is a real answer here: an engine whose packages leave a running server behind
+    them has nothing to initialize, and a plan for one carries no initialization section
+    rather than an empty one nobody would know how to read.
+    """
+    if entry is None:
+        return None
+    return Initialization(
+        description=" ".join(str(entry["description"]).split()),
+        settings=tuple(
+            InitializationSetting(
+                name=setting["name"],
+                value=setting["value"],
+                why=" ".join(str(setting["why"]).split()),
+            )
+            for setting in entry["settings"]
+        ),
     )
 
 

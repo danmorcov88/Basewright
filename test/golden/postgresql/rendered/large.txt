@@ -1,5 +1,5 @@
 BASEWRIGHT PLAN  db-large.invalid
-  generated 2026-01-15T09:30:00Z by basewright 0.1.0 -- plan id 94516bd25e81
+  generated 2026-01-15T09:30:00Z by basewright 0.1.0 -- plan id 0fe1d5a24d48
 
 REQUEST
   engine            postgresql 16  (profile default)
@@ -156,10 +156,34 @@ LAYOUT
   Owned by postgres, shell /bin/bash, must already exist. The filesystem carrying each
   path is in the artifact, and preflight is where two paths sharing one is reported.
 
+INITIALIZATION
+  Create the cluster in the data directory the plan names, on the planned port, with the
+  locale this host was already checked for. None of it can be changed afterwards without
+  dumping and reloading every database in it.
+
+  locale            en_US.UTF-8
+  encoding          UTF8
+    -> The only encoding worth choosing in 2026, and the one every client library
+       assumes unless told otherwise. A cluster created in a single-byte encoding is a
+       cluster that corrupts the first name somebody types an accent into, and the
+       repair is a dump and a reload.
+  data_checksums    true
+    -> Silent corruption on the storage underneath is otherwise found by reading a wrong
+       answer out of a query. Checksums turn that into an error at the moment the page
+       is read, which is the difference between a restore and an investigation. They
+       cost a few percent of throughput and they cannot be turned on afterwards without
+       taking the cluster down.
+  start_conf        auto
+    -> The Debian packaging keeps a per-cluster start policy, and the default for a
+       cluster created by hand is not the one a provisioned instance wants: an instance
+       that does not come back after a reboot is discovered by the reboot.
+
 CHANGES apply WOULD MAKE
   + add package repository pgdg (https://apt.postgresql.org/pub/repos/apt)
   + install postgresql-16, postgresql-client-16, postgresql-contrib
   + create 4 directories
+  + initialize the instance (locale=en_US.UTF-8, encoding=UTF8, data_checksums=true,
+    start_conf=auto)
   + write /etc/postgresql/16/main/conf.d/basewright.conf (17 parameters)
   + write /etc/postgresql/16/main/pg_hba.conf
   + enable and start postgresql@16-main

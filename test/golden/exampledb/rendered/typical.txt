@@ -1,5 +1,5 @@
 BASEWRIGHT PLAN  db-typical.invalid
-  generated 2026-01-15T09:30:00Z by basewright 0.1.0 -- plan id d6cb9a5adc52
+  generated 2026-01-15T09:30:00Z by basewright 0.1.0 -- plan id 79b5dda1d79c
 
 REQUEST
   engine            exampledb 3  (profile default)
