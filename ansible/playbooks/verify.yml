@@ -52,6 +52,10 @@
         tasks_from: observe
 
   post_tasks:
+    # Once per host rather than once per run, which costs a task that finds the directory
+    # already there and buys not depending on which host got there first. `run_once` reads
+    # as an optimisation and behaves as one only under a linear strategy, and the promise
+    # this task makes is small enough not to be worth a promise about the strategy.
     - name: Make somewhere for the reading to land
       ansible.builtin.file:
         path: "{{ basewright_observation_dir }}"
@@ -59,7 +63,6 @@
         mode: "0750"
       delegate_to: localhost
       become: false
-      run_once: true
 
     # Assembled by the filter rather than written out field by field here, so that the
     # envelope has one implementation and pytest covers it. What this contributes is the
