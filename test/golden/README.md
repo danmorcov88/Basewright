@@ -1,15 +1,21 @@
 # Golden plans
 
 One fixture host, put through the whole pipeline against one profile, with the answer
-committed. `plan/` holds the plans of the hosts that can carry an instance; `refused/`
-holds the reports of the hosts that cannot.
+committed. There is a directory per engine, and under each of them `plan/` holds the plans
+of the hosts that can carry an instance and `refused/` holds the reports of the hosts that
+cannot.
+
+Two engines are here and they do different jobs. `postgresql/` is the real one, and its
+diff is how a change to a tuning decision gets reviewed. `exampledb/` is fictional, and it
+stays because it can be made to do things a real profile must not: it exercises the schema
+and the loader without implying anything about anybody's production database.
 
 ## Why they are here
 
 A sizing rule is a decision about somebody else's production database. The way to review
 such a decision is to read the difference it makes to a plan, not to read the arithmetic
 and imagine one. So a change to a rule shows up in a pull request as a diff of the values
-it produced, on five real machines, and a reviewer who has never seen the evaluator can
+it produced, on five machines, for every engine that ships, and a reviewer who has never seen the evaluator can
 still tell whether the change was the one that was meant.
 
 The refusals are here for the same reason in reverse. A change that quietly stops refusing

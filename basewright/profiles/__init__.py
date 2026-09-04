@@ -17,6 +17,12 @@ from basewright.profiles.errors import (
     ProfileError,
 )
 from basewright.profiles.loader import load_profile, load_profiles, profile_directories
+from basewright.profiles.locate import (
+    UnknownEngineError,
+    directory_for,
+    known_engines,
+    profiles_directory,
+)
 from basewright.profiles.model import (
     GateRule,
     PackageSet,
@@ -48,9 +54,13 @@ __all__ = [
     "SizingRule",
     "SupportedOS",
     "SupportedVersion",
+    "UnknownEngineError",
     "VerifyCheck",
+    "directory_for",
+    "known_engines",
     "load_profile",
     "load_profiles",
     "profile_directories",
+    "profiles_directory",
     "schema_directory",
 ]

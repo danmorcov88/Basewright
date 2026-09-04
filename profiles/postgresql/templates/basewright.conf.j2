@@ -1,0 +1,8 @@
+# Managed by Basewright. Generated from plan {{ plan_id }} on {{ generated_at }}.
+#
+# A drop-in, read after the packaged postgresql.conf, which is left alone. Every value
+# below carries the rule that produced it: change the profile, not this file, or the next
+# apply will put it back and the plan will stop describing this machine.
+{% for parameter in parameters %}
+{{ parameter.parameter }} = {{ parameter.value }}  # {{ parameter.rule }}
+{% endfor %}

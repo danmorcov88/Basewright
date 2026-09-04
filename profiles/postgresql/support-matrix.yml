@@ -1,0 +1,43 @@
+---
+engine: postgresql
+# Sixteen is the default because it is the version Phase A targets and the one the estate
+# is most likely to standardise on. Newer is offered, older is allowed with a warning that
+# has to be acknowledged, and anything not listed is refused rather than attempted.
+default_version: "16"
+versions:
+  - version: "17"
+    eol: "2029-11-08"
+    arch: [x86_64, aarch64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["22.04", "24.04"]
+      - family: debian
+        distro: debian
+        versions: ["12"]
+
+  - version: "16"
+    eol: "2028-11-09"
+    arch: [x86_64, aarch64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["22.04", "24.04"]
+      - family: debian
+        distro: debian
+        versions: ["12"]
+
+  # Still supported upstream and still in service in most estates, but provisioning a new
+  # instance on it spends support life that is already running out. Allowed, and the
+  # warning is the conversation about whether this instance will outlive the version.
+  - version: "15"
+    eol: "2027-11-11"
+    status: allowed_with_warning
+    arch: [x86_64, aarch64]
+    supported_os:
+      - family: debian
+        distro: ubuntu
+        versions: ["22.04"]
+      - family: debian
+        distro: debian
+        versions: ["12"]

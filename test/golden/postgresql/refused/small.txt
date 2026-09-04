@@ -1,0 +1,73 @@
+PREFLIGHT  db-small.invalid -- postgresql 16, instance main
+  15 pass -- 4 warn -- 2 block -- 4 skipped
+
+  BLOCK disk.free_space           backup needs 50GB and / has 30.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK locale.present            en_US.UTF-8 is not present; the host has C.UTF-8
+                                  -> Generate en_US.UTF-8 on the host before
+                                     provisioning. Initialization is the last step of
+                                     apply and the first thing that fails without it, by
+                                     which point the packages are installed and the
+                                     account exists.
+
+  WARN  disk.separate_mounts      backup and data both live on /; log and data both live
+                                  on /; wal and data both live on /
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  os.swappiness             vm.swappiness is 60, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  WARN  postgresql.storage.rotational
+                                  not path.data.rotational does not hold on this host
+                                  -> Move the data directory to solid state storage if
+                                     this instance is latency sensitive. Rotational
+                                     storage is supported and is sized for -- the
+                                     planner costs random reads differently on it -- but
+                                     it is not the assumption the defaults below are
+                                     written against.
+
+  WARN  postgresql.wal.separate_spindle
+                                  path.wal.mount != path.data.mount does not hold on
+                                  this host
+                                  -> Give the write-ahead log its own mount with a path
+                                     override. Every committed transaction is a
+                                     sequential write here and every checkpoint is a
+                                     burst of random writes to the data directory; on
+                                     one spindle they take turns, and the commit latency
+                                     is what shows it. On solid state storage this
+                                     matters much less and is still worth knowing.
+
+  SKIP  firewall.state            the host did not report a firewall
+                                  -> Collect it, or accept that this is unanswered.
+
+  SKIP  postgresql.swap.present   whether this applies depends on
+                                  host.memory.swap_bytes, which was not reported
+                                  -> Give the machine a small swap area. This is not
+                                     somewhere PostgreSQL should ever run from, and that
+                                     is the point: with no swap at all the kernel's only
+                                     response to a memory shortage is to kill the
+                                     largest process, which is this one.
+
+  SKIP  repo.reachable            the host did not report whether it can reach pgdg
+                                  -> Reaching a repository is proved from the host,
+                                     which happens when the facts are collected over
+                                     SSH. Until then this is unanswered rather than
+                                     assumed, and the first task of apply is where it
+                                     would otherwise be discovered.
+
+  SKIP  time.sync                 the host did not report a time synchronization service
+                                  -> Collect it, or accept that this is unanswered.
+
+REFUSED  2 rules block this host. No plan was produced, and there is no flag that
+         produces one.

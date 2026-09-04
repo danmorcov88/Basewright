@@ -79,7 +79,7 @@ And here is one, rendered for the person who has to approve it. Every value carr
 rule that produced it and the reasoning that rule ships with:
 
 ```
-basewright plan --from test/golden/plan/typical.json
+basewright plan --from test/golden/postgresql/plan/typical.json
 ```
 
 <picture>
@@ -150,10 +150,11 @@ real value, from the rule that produced it to the line it occupies in a plan:
 
 ## Quickstart
 
-**Not yet a quickstart, and it says so rather than pretending.** No engine profile ships in
-this repository — `profiles/` is empty until Phase A — so there is nothing here you can point
-at a server and provision. What follows is a walkthrough of the three verbs that work,
-against documents committed under `test/`, which is as much as exists today.
+**Not the whole loop yet, and it says so rather than pretending.** There is a real engine
+profile now, and `gather` reads a real host — but `apply` is Ansible's half and is not
+written, so nothing here provisions a server end to end. What follows is every step that
+does work, run against documents committed under `test/`, which is what makes each command
+below copy-pasteable and each picture reproducible.
 
 Every command below is copy-pasteable after `make install`, and every one of them is the
 command that produced the picture underneath it: `tools/render_assets.py` runs them to make
@@ -214,7 +215,7 @@ host. A refusal is a first-class outcome, so it is an answer rather than an erro
 the rule, what was found, what was required, and what would have to change.
 
 ```
-basewright preflight --facts test/fixtures/hosts/crowded.json --profile test/fixtures/profiles/exampledb
+basewright preflight --facts test/fixtures/hosts/crowded.json --engine postgresql
 ```
 
 <picture>
@@ -227,7 +228,7 @@ There is no flag that turns any of that into a plan. A host that passes still re
 it is not happy about, and those warnings are acknowledged before apply will run:
 
 ```
-basewright preflight --facts test/fixtures/hosts/typical.json --profile test/fixtures/profiles/exampledb
+basewright preflight --facts test/fixtures/hosts/typical.json --engine postgresql
 ```
 
 <picture>
@@ -338,15 +339,36 @@ engine name appears in the core.
 
 ## Supported engines
 
-| Engine        | OS families     | Status         |
-| ------------- | --------------- | -------------- |
-| PostgreSQL    | Debian / Ubuntu | in development |
-| PostgreSQL    | RHEL / Rocky    | planned        |
-| MySQL/MariaDB | Debian / Ubuntu | planned        |
-| SQL Server    | Windows         | planned        |
+| Engine        | OS families           | Versions   | Status                       |
+| ------------- | --------------------- | ---------- | ---------------------------- |
+| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | plans; does not apply yet |
+| PostgreSQL    | RHEL / Rocky          | —          | planned                      |
+| MySQL/MariaDB | Debian / Ubuntu       | —          | planned                      |
+| SQL Server    | Windows               | —          | planned                      |
 
-Nothing in that table is finished. See [docs/dev/STATUS.md](docs/dev/STATUS.md) for what is
-actually merged.
+`profiles/postgresql/` is eight declarative files and one template directory. It gates a
+host, sizes seventeen parameters and produces a complete plan; what it cannot do yet is
+apply one, because `apply` is Ansible's half and is Phase A's next slice. Nothing under
+`basewright/` knows the word PostgreSQL, and a test reads every line of the core to keep
+that true.
+
+The values that had to be assumed rather than confirmed — path conventions, the service
+account, the locale, the authentication rules, the minimums that become blocks — are listed
+one by one in [docs/dev/STATUS.md](docs/dev/STATUS.md), because a threshold nobody has
+agreed to is an assumption and should read like one.
+
+An engine nothing has a profile for is not a missing feature, it is a missing directory,
+and the refusal says so:
+
+```
+basewright preflight --facts test/fixtures/hosts/typical.json --engine mysql
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/engine-unknown-dark.svg">
+  <img alt="basewright refusing an engine it has no profile for, and naming the ones it has"
+       src="docs/assets/engine-unknown-light.svg" width="760">
+</picture>
 
 ## Writing a profile
 

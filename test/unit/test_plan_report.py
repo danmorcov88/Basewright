@@ -24,7 +24,7 @@ from basewright.report.plan import render_plan
 from basewright.report.problems import REPORT_WIDTH
 
 ROOT = Path(__file__).resolve().parents[2]
-PLANS = ROOT / "test" / "golden" / "plan"
+PLANS = ROOT / "test" / "golden" / "exampledb" / "plan"
 
 #: Every fixture host that produces a plan, and what each of them is here to show.
 FIXTURES: tuple[tuple[str, str], ...] = (

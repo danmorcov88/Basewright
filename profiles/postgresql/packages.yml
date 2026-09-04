@@ -1,0 +1,26 @@
+---
+engine: postgresql
+# From the PostgreSQL project's own repository rather than the distribution's, because the
+# distribution ships one major version per release and this profile supports three
+# (ADR-0011). Never built from source: a database compiled on the machine it runs on is a
+# machine nobody can rebuild identically.
+families:
+  debian:
+    repository:
+      name: pgdg
+      url: https://apt.postgresql.org/pub/repos/apt
+      key_url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+      # The suite is the distribution's own codename with -pgdg appended, which is why the
+      # collector reports the codename rather than the core deriving it from a version
+      # number it would have to keep a table for.
+      suite: "{{ os.codename }}-pgdg"
+      components: [main]
+    packages:
+      - postgresql-{{ version }}
+      - postgresql-client-{{ version }}
+      - postgresql-contrib
+    # The Debian packaging runs one templated unit per cluster, named for the major version
+    # and the cluster. Using it rather than a unit of our own means pg_ctlcluster and
+    # pg_lsclusters keep working, and that a person who knows this engine can operate the
+    # instance without knowing this tool exists.
+    service: postgresql@{{ version }}-{{ instance }}

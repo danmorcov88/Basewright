@@ -1,0 +1,82 @@
+---
+engine: postgresql
+# Two numbers here become blocks with no run-time override (ADR-0004), so both are set
+# where somebody will defend them in a review rather than where they sound impressive. They
+# are floors, not recommendations: they exist to catch a request pointed at a machine nobody
+# meant to provision, and a real production server clears both without noticing.
+minimums:
+  cores: 2
+  memory: 2GB
+
+preferences:
+  # ext4 and xfs are what the estate's storage will be, and what upstream tests against.
+  # A database on anything else is not necessarily wrong; it is worth somebody saying yes
+  # to on purpose.
+  filesystems: [ext4, xfs]
+  # Never or madvise. Always is the setting that hands PostgreSQL a 2 MB page for a 8 kB
+  # buffer and then spends the machine's afternoon compacting memory to find more of them.
+  transparent_hugepages: [madvise, never]
+  # Ten, not zero. A database whose shared buffers the kernel has paged out pays for that
+  # memory twice, but a kernel forbidden to swap at all has one fewer option than the
+  # out-of-memory killer.
+  max_swappiness: 10
+
+conflicts:
+  - service: postgresql
+    match: prefix
+    description: >-
+      an existing PostgreSQL installation from the vendor packages. Basewright never
+      adopts, reconfigures or upgrades a cluster it did not create, because it cannot tell
+      what depends on it
+
+rules:
+  - id: postgresql.port.unprivileged
+    severity: block
+    title: A port the service account can bind without privilege
+    expr: request.port > 1024
+    remediation: >-
+      Choose a port above 1024. PostgreSQL drops to an unprivileged account before it
+      binds, so a reserved port means an instance that starts as root or does not start
+      at all.
+
+  - id: postgresql.memory.headroom
+    severity: warn
+    title: Memory free for the instance to grow into
+    expr: host.memory.available_bytes >= host.memory.total_bytes / 4
+    remediation: >-
+      Free memory before provisioning, or provision this instance somewhere else. A
+      quarter of memory is what shared_buffers alone is sized to take below, and taking
+      it from a machine that has not got it means swapping from the first day.
+
+  - id: postgresql.storage.rotational
+    severity: warn
+    title: Data directory on rotational storage
+    expr: not path.data.rotational
+    applies_to: path.data.rotational is not none
+    remediation: >-
+      Move the data directory to solid state storage if this instance is latency
+      sensitive. Rotational storage is supported and is sized for -- the planner costs
+      random reads differently on it -- but it is not the assumption the defaults below
+      are written against.
+
+  - id: postgresql.wal.separate_spindle
+    severity: warn
+    title: The write-ahead log has a mount of its own
+    expr: path.wal.mount != path.data.mount
+    applies_to: path.wal.mount is not none and path.data.mount is not none
+    remediation: >-
+      Give the write-ahead log its own mount with a path override. Every committed
+      transaction is a sequential write here and every checkpoint is a burst of random
+      writes to the data directory; on one spindle they take turns, and the commit latency
+      is what shows it. On solid state storage this matters much less and is still worth
+      knowing.
+
+  - id: postgresql.swap.present
+    severity: warn
+    title: The machine has some swap
+    expr: host.memory.swap_bytes > 0
+    applies_to: host.memory.swap_bytes is not none
+    remediation: >-
+      Give the machine a small swap area. This is not somewhere PostgreSQL should ever
+      run from, and that is the point: with no swap at all the kernel's only response to
+      a memory shortage is to kill the largest process, which is this one.

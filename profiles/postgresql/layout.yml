@@ -1,0 +1,58 @@
+---
+engine: postgresql
+# The upstream Debian layout, exactly. Basewright could impose a tidier one of its own and
+# it deliberately does not: a DBA opening a machine at three in the morning should find the
+# data directory where every other PostgreSQL on the estate keeps it, and every tool that
+# already knows this engine -- pg_ctlcluster, pg_lsclusters, the packaged logrotate -- keeps
+# working. A layout nobody else understands is a layout that gets undone by hand.
+paths:
+  data:
+    default: /var/lib/postgresql/{{ version }}/{{ instance }}
+    mode: "0700"
+    min_free: 20GB
+    description: >-
+      The cluster's data directory, where initdb writes. Twenty gigabytes is a floor
+      rather than a size: below it, nobody meant to run production here.
+
+  wal:
+    default: /var/lib/postgresql/{{ version }}/{{ instance }}/pg_wal
+    mode: "0700"
+    min_free: 10GB
+    prefer_separate_from: [data]
+    description: >-
+      The write-ahead log, at the upstream default inside the data directory. Named as a
+      path of its own so the plan says where it is and an override can move it.
+
+  log:
+    default: /var/log/postgresql
+    mode: "0750"
+    min_free: 2GB
+    prefer_separate_from: [data]
+    description: >-
+      Server logs, where the packaged logrotate already expects them. A log that fills a
+      filesystem should cost the estate a log rather than a database.
+
+  backup:
+    # Deliberately not /var/backups, which is where the distribution keeps a few kilobytes
+    # of dpkg state and which lands on the root filesystem on every machine. A database
+    # backup destination is a mount somebody provisioned on purpose, so the default names
+    # one and a host that has not got it is refused rather than quietly given the root
+    # filesystem. What the estate actually calls that mount is one of the open questions.
+    default: /backup/{{ engine }}/{{ instance }}
+    mode: "0750"
+    min_free: 50GB
+    prefer_separate_from: [data]
+    description: >-
+      Where a backup tool would write. The path is created and proved writable; scheduling
+      backups is another tool's job (ADR-0013).
+
+service_account:
+  name: postgres
+  # The vendor package creates this account, and it is left to. An account Basewright made
+  # first would have whatever uid the host had free, which is not necessarily the one the
+  # package's own files are owned by -- and the failure that produces is a data directory
+  # the server cannot read, discovered at start-up.
+  create_if_missing: false
+  shell: /bin/bash
+  group: postgres
+  home: /var/lib/postgresql

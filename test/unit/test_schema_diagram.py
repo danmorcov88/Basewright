@@ -76,7 +76,7 @@ def test_every_section_the_diagram_draws_says_who_reads_it() -> None:
 def test_the_journey_ends_where_the_golden_plan_says_it_does() -> None:
     """The numbers in the picture are the ones the pipeline produces, or it is fiction."""
     plan = json.loads(
-        (ROOT / "test" / "golden" / "plan" / f"{SIZING_JOURNEY_HOST}.json").read_text(
+        (ROOT / "test" / "golden" / "exampledb" / "plan" / f"{SIZING_JOURNEY_HOST}.json").read_text(
             encoding="utf-8"
         )
     )

@@ -33,7 +33,13 @@ from basewright.planner import (
     rendered,
 )
 from basewright.preflight import RuleError, document, evaluate
-from basewright.profiles import InvalidProfileError, ProfileError, load_profile
+from basewright.profiles import (
+    InvalidProfileError,
+    ProfileError,
+    directory_for,
+    known_engines,
+    load_profile,
+)
 from basewright.profiles.model import Profile
 from basewright.report.plan import render_plan
 from basewright.report.preflight import render_preflight
@@ -117,17 +123,14 @@ VERBS: dict[str, str] = {
 #: help says so rather than implying a machine is being contacted.
 _FACTS_HELP = "Path to a facts document. Collecting from a live host is not built yet."
 
-#: No profile ships in the repository yet, so the directory is named rather than looked up
-#: by engine.
+#: Two ways to say the same thing, and they are not interchangeable in intent.
 #:
-#: This flag does not go away when one does. ``--engine NAME`` is added alongside it, as a
-#: lookup under ``profiles/``, and the two are mutually exclusive -- but naming a directory
-#: stays the way a profile author runs an uncommitted profile, and the way every fixture in
-#: this repository is driven. The change is additive, so nobody has to plan around it.
-_PROFILE_HELP = (
-    "Path to the profile directory for the engine being provisioned. "
-    "--engine, naming one under profiles/, is added when the first profile lands."
-)
+#: ``--engine`` is what an operator uses: they know which engine they are provisioning and
+#: not where its directory lives. ``--profile`` is what a profile author uses, and it is
+#: how every fixture in this repository is driven -- a profile that is not committed yet
+#: has no name to look up. Neither replaces the other, which is why both are here.
+_ENGINE_HELP = "The engine to provision, looked up under profiles/."
+_PROFILE_HELP = "Path to a profile directory, for one that is not installed under profiles/."
 
 #: Reading a plan back is what makes it reviewable by somebody other than the person who
 #: produced it, which is the separation the whole artifact exists for. Retrieval by plan
@@ -193,7 +196,12 @@ def _add_request_arguments(parser: argparse.ArgumentParser) -> None:
     recorded: a version a person chose and a version nobody chose are not the same
     decision, and one of the rules reads which it was.
     """
-    parser.add_argument("--profile", metavar="PATH", type=Path, help=_PROFILE_HELP)
+    # Mutually exclusive, because a request that named both would have to be resolved by
+    # a precedence rule, and a precedence rule is a thing somebody eventually relies on
+    # without meaning to.
+    named = parser.add_mutually_exclusive_group()
+    named.add_argument("--engine", metavar="NAME", help=_ENGINE_HELP)
+    named.add_argument("--profile", metavar="PATH", type=Path, help=_PROFILE_HELP)
     parser.add_argument(
         "--engine-version",
         metavar="VERSION",
@@ -341,6 +349,7 @@ def render_existing(args: argparse.Namespace) -> int:
         name
         for name, value in (
             ("--facts", args.facts),
+            ("--engine", args.engine),
             ("--profile", args.profile),
             ("--json", args.as_json or None),
         )
@@ -389,12 +398,19 @@ def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Re
     Shared by the two verbs that need all three, so that a malformed profile is refused
     in the same words whichever of them was asked for.
     """
-    if args.facts is None or args.profile is None:
+    if args.facts is None or (args.engine is None and args.profile is None):
+        engines = ", ".join(known_engines()) or "none are installed"
         _refuse(
-            f"basewright {verb}: --facts and --profile are both required. Collecting "
-            "facts from a live host runs over SSH and is not built yet -- see "
-            "docs/dev/STATUS.md."
+            f"basewright {verb}: --facts, and one of --engine or --profile, are required. "
+            f"The engines this installation can provision are: {engines}. A facts "
+            "document is written by ansible/playbooks/gather.yml."
         )
+        return EXIT_USAGE
+
+    try:
+        directory = directory_for(args.engine) if args.engine else args.profile
+    except ProfileError as error:
+        _refuse(f"basewright {verb}: {error}")
         return EXIT_USAGE
 
     try:
@@ -407,7 +423,7 @@ def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Re
         return EXIT_USAGE
 
     try:
-        profile = load_profile(args.profile)
+        profile = load_profile(directory)
     except InvalidProfileError as error:
         print(error.report(), file=sys.stderr)
         return EXIT_REFUSED
