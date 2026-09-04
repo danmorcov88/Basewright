@@ -1,0 +1,123 @@
+---
+# The step that changes a machine, and the only one that does. Semaphore runs this; it does
+# not run the CLI (ADR-0020).
+#
+# Four things have to be true before a single task touches the host, and all four are
+# settled here rather than inside a role, because a role that could be run without them is
+# a role somebody will run without them:
+#
+#   the plan is a plan, and this build understands its contract;
+#   the plan has not been edited since it was approved;
+#   the machine is still the one the plan was built from;
+#   and any warnings on it have been acknowledged by somebody.
+#
+# The first two are one check. `basewright plan --from` validates the document against the
+# frozen contract and recomputes the digest its name is taken over, so a plan of a version
+# this build does not implement, and a plan somebody has edited, are both refused by the
+# tool that produced them rather than by a second opinion written in YAML.
+- name: Apply a plan
+  hosts: "{{ basewright_hosts | default('all') }}"
+  gather_facts: true
+
+  vars:
+    # The plan to apply. There is no other input, and that is the whole design: if apply
+    # needs a value this document does not carry, the document is incomplete and the plan
+    # step is where that gets fixed.
+    basewright_plan_path: "{{ basewright_plan_file | mandatory }}"
+    basewright_plan: "{{ lookup('file', basewright_plan_path) | from_json }}"
+    # Warnings are acknowledged before apply runs, not overridden while it does (ADR-0004).
+    # There is no equivalent for a block, and there never will be: a plan cannot carry one.
+    basewright_accept_warnings: false
+
+  pre_tasks:
+    # Once per host rather than once per run, and the two are the same thing here: a plan is
+    # built from one host's facts, and the drift check below refuses it against any other.
+    - name: Read the plan back through the tool that wrote it
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli plan
+          --from {{ basewright_plan_path | quote }}
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    # Collected, not written down. A document records the moment it was collected, so
+    # writing one here would report a change on every run of the one step that has to be
+    # idempotent. The answer still goes through the same filter the collecting role's
+    # template uses, so there is one definition of what a host is and this reads it.
+    - name: Read what the host is now
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_write: false
+
+    - name: Refuse a host that is no longer the one the plan was built from
+      ansible.builtin.assert:
+        that: basewright_drift | length == 0
+        fail_msg: |-
+          {{ basewright_plan_path }} was built from a machine this host is no longer.
+
+          {{ basewright_drift | join('
+
+          ') }}
+
+          Produce a fresh plan against this host and have it approved. Applying a plan
+          whose facts have moved is how an instance ends up sized for hardware it is not
+          running on.
+        success_msg: >-
+          the host still matches the facts this plan was built from, as far as the plan
+          records them
+      vars:
+        basewright_drift: >-
+          {{ basewright_plan | basewright_drift(gather_collected | basewright_document) }}
+
+    - name: Refuse to apply warnings nobody has acknowledged
+      ansible.builtin.assert:
+        that: not basewright_plan.result.warnings_require_acknowledgement | bool
+              or basewright_accept_warnings | bool
+        fail_msg: >-
+          This plan carries {{ basewright_plan.result.warnings }} warnings, and somebody
+          has to say they have read them. Run the plan through `basewright plan --from` to
+          see them, then run this again with -e basewright_accept_warnings=true. Silent
+          warnings stop being read within a month, which is the whole reason for this.
+
+  # The phases, in the order the plan lists its own changes in. That is not a coincidence
+  # and it is not decoration: `changes` is the list somebody read and approved, and a step
+  # that executed it in a different order would be doing something other than what was
+  # approved. The shared phases fall between the engine's, which is why each role is
+  # entered per phase rather than once -- a profile whose vendor package makes the service
+  # account cannot have its directories owned before the packages are there.
+  #
+  # The plan names the engine and the engine's role is what knows what the values are for.
+  # Nothing above this line has learned one, and nothing here decides which: the document
+  # says, and the document is what a person approved.
+  tasks:
+    - name: Add the repository the packages come from, and install them
+      ansible.builtin.include_role:
+        name: "{{ basewright_plan.profile.engine }}"
+        tasks_from: packages
+
+    - name: Make the account the instance runs as, and the directories it lives in
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: layout
+
+    - name: Create the instance
+      ansible.builtin.include_role:
+        name: "{{ basewright_plan.profile.engine }}"
+        tasks_from: initialize
+
+    - name: Write the configuration files the plan names
+      ansible.builtin.include_role:
+        name: "{{ basewright_plan.profile.engine }}"
+        tasks_from: configure
+
+    - name: Set the host settings the instance needs
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: settings
+
+    - name: Enable the instance, start it, and store the secrets it needs
+      ansible.builtin.include_role:
+        name: "{{ basewright_plan.profile.engine }}"
+        tasks_from: start

@@ -38,6 +38,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import yaml
+
 from basewright.cli import EXIT_CODES
 from basewright.facts import HostFacts, load_facts
 from basewright.preflight import evaluate
@@ -596,6 +598,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0001", "plan before apply"),
             ("0009", "rules explain themselves"),
             ("0010", "match, or refuse"),
+            ("0023", "drift is measured against the plan"),
             ("0016", "canonical values, not rendered"),
             ("0017", "a plan is named by its content"),
         ),
@@ -871,6 +874,59 @@ def render_reachability(theme: Theme) -> str:
             "repository are two different claims about what was proved.",
         ),
         columns=(20, 200, 700),
+    )
+
+
+#: Where the playbook that applies a plan is read from. The diagram below is drawn from it
+#: rather than written beside it, so a phase added, removed or reordered redraws the picture
+#: and a picture describing a sequence nobody runs fails the build.
+APPLY_PLAYBOOK = ROOT / "ansible" / "playbooks" / "apply.yml"
+
+#: How the playbook names the engine's role, and what to call it in a picture. It is a
+#: template rather than a name because the plan says which engine and the playbook is a
+#: shared file that must never have learned one.
+_FROM_THE_PLAN = "{{ basewright_plan.profile.engine }}"
+
+
+def _apply_phases() -> tuple[tuple[str, str, str], ...]:
+    """The phases apply runs, in order, read out of the playbook that runs them."""
+    playbook = yaml.safe_load(APPLY_PLAYBOOK.read_text(encoding="utf-8"))
+    rows: list[tuple[str, str, str]] = []
+    for task in playbook[0]["tasks"]:
+        include = task.get("ansible.builtin.include_role")
+        if include is None:
+            continue
+        role = include["name"]
+        rows.append(
+            (
+                include.get("tasks_from", "main"),
+                " ".join(str(task["name"]).split()),
+                "the engine's own role" if role == _FROM_THE_PLAN else "shared, every engine",
+            )
+        )
+    return tuple(rows)
+
+
+def render_apply_phases(theme: Theme) -> str:
+    """What apply does, in the order the plan lists it, and which half does each part."""
+    return render_table(
+        theme,
+        title="Applying a plan: the phases, in the order the plan lists its own changes",
+        subtitle=(
+            "The two halves interleave because the order is the plan's rather than the "
+            "roles'. Apply reads the plan and nothing else."
+        ),
+        headings=("PHASE", "WHAT IT DOES", "RUN BY"),
+        rows=_apply_phases(),
+        footer=(
+            "Before any of it: the plan is validated and its digest recomputed, the host is "
+            "read again and refused if it has drifted, and warnings must have been "
+            "acknowledged.",
+            "A block never reaches this page. A plan cannot carry one, and there is no flag "
+            "that makes it possible (ADR-0004).",
+        ),
+        columns=(20, 150, 640),
+        width=960,
     )
 
 
@@ -1192,6 +1248,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"exit-codes-{suffix}.svg"] = render_exit_codes(theme)
         assets[ASSETS / f"verb-pipeline-{suffix}.svg"] = render_verb_pipeline(theme)
         assets[ASSETS / f"reachability-{suffix}.svg"] = render_reachability(theme)
+        assets[ASSETS / f"apply-phases-{suffix}.svg"] = render_apply_phases(theme)
         for entry in CAPTURES:
             assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
                 entry.title, printed[entry.name], theme

@@ -1,0 +1,40 @@
+---
+# The account the instance runs as, and the directories it lives in. Neither depends on
+# which engine this is, which is why they are here rather than in a paragraph copied into
+# every engine's role.
+#
+# This phase runs after the packages rather than before them, and that is not an accident
+# of how the playbook was written: it is the order the plan lists its own changes in. A
+# profile whose vendor package makes the service account -- which is most of them -- cannot
+# have its directories owned by an account that does not exist yet.
+#
+# Everything comes out of the plan. Nothing here reads a profile, works out a default or
+# decides anything: if a value is not in the plan, the plan is incomplete and the plan step
+# is where that gets fixed.
+
+- name: Make sure the account the instance will run as exists
+  ansible.builtin.user:
+    name: "{{ basewright_plan.layout.service_account.name }}"
+    group: "{{ basewright_plan.layout.service_account.group }}"
+    shell: "{{ basewright_plan.layout.service_account.shell }}"
+    system: true
+    create_home: false
+    state: present
+  become: true
+  # A profile whose vendor package makes the account says so, and this is skipped. Creating
+  # it first would give it whatever uid the host had free, which is not necessarily the one
+  # the package's own files are owned by -- and the failure that produces is a data
+  # directory the server cannot read, discovered at start-up.
+  when: basewright_plan.layout.service_account.create | bool
+
+- name: Create the directories the instance lives in
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ basewright_plan.layout.paths }}"
+  loop_control:
+    label: "{{ item.purpose }} at {{ item.path }}"
+  become: true

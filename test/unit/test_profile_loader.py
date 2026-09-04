@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from basewright.bridge import template
 from basewright.expressions import base_scope
 from basewright.facts import load_facts
 from basewright.layout import resolve_paths
@@ -27,6 +28,7 @@ from basewright.profiles import (
     load_profiles,
 )
 from basewright.profiles.loader import _RESERVED_GROUPS
+from basewright.profiles.locate import UnknownEngineError, template_for
 from basewright.profiles.schema import PROFILE_FILES
 from basewright.request import resolve_request
 from basewright.scope import build_scope
@@ -466,3 +468,36 @@ def test_the_reserved_names_are_the_ones_a_scope_actually_has(profile: Profile) 
     scope = build_scope(facts, profile, request, resolve_paths(profile, request))
 
     assert set(_RESERVED_GROUPS) == set(scope) - set(base_scope())
+
+
+# ------------------------------------------------------- the template a plan names
+
+
+def test_a_template_a_plan_names_is_found_in_the_profile_it_names() -> None:
+    """The one thing apply looks up outside the plan, and it is a file rather than a value
+    (ADR-0022). Every value poured into it comes from the plan."""
+    found = template_for("postgresql", "pg_hba.conf.j2")
+
+    assert found.is_file()
+    assert found.parent.name == "templates"
+
+
+def test_a_template_the_profile_has_not_got_is_refused_by_name() -> None:
+    """A plan naming a template nothing can render is stopped before the host is touched,
+    rather than halfway through an apply on somebody else's machine."""
+    with pytest.raises(UnknownEngineError, match="no template called"):
+        template_for("postgresql", "nothing-of-the-sort.conf.j2")
+
+
+@pytest.mark.parametrize("name", ["../../../etc/passwd.j2", "a/b.j2", "..", ".", ""])
+def test_a_name_that_is_a_path_is_not_a_template_name(name: str) -> None:
+    """A plan is a document that arrives from somewhere, and a path assembled out of one is
+    a path somebody could aim. The name is checked rather than joined."""
+    with pytest.raises(UnknownEngineError):
+        template_for("postgresql", name)
+
+
+def test_the_bridge_hands_ansible_a_path_rather_than_a_decision() -> None:
+    plan = {"profile": {"engine": "postgresql"}}
+
+    assert template(plan, "basewright.conf.j2").endswith("basewright.conf.j2")

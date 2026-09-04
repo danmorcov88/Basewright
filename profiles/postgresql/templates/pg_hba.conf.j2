@@ -1,6 +1,6 @@
-# Managed by Basewright. Generated from plan {{ plan_id }} on {{ generated_at }}.
+# Managed by Basewright. Generated from plan {{ plan.plan_id }} on {{ plan.generated_at }}.
 #
-# Local connections only, and no rule anywhere on this file grants access without a
+# Local connections only, and no rule anywhere in this file grants access without a
 # password. That is a placeholder rather than a policy: the networks this instance should
 # accept, and the roles they may connect as, are one of the seven things that have to come
 # from the estate before this profile stops being a defensible default.
@@ -10,7 +10,7 @@
 
 # The service account administers the cluster over the local socket, identified by the
 # operating system rather than by a password nobody would ever rotate.
-local   all             {{ layout.service_account.name }}                     peer
+local   all             {{ plan.layout.service_account.name }}                     peer
 
 # Everything else proves who it is. scram-sha-256 rather than md5: md5 has been the wrong
 # answer since PostgreSQL 10 offered an alternative.
