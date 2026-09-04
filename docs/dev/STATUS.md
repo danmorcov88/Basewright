@@ -250,6 +250,30 @@ line in `layout.yml` changes and the warning stops.
   to raise.
 - `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
   step, built in Phase A, and its schema is expected to gain detail there.
+- **`apply` needs one thing the plan does not carry, and it is a version of the contract.**
+  Read against what an apply role would actually execute, `plan.json` is complete except
+  for creating the instance. Packages, the repository with its key, suite and components,
+  the service unit, every path with its mode and owner, the host settings with what they
+  are now, the location of every secret, and every value the configuration templates
+  interpolate are all there. What is not is initialization: the locale lives in
+  `profile.yml` as `defaults.locale` and never reaches the plan, the encoding and the
+  checksum flag are nowhere at all, and no entry in `changes` says a cluster gets created.
+  None of it can be derived, because apply reads the plan and nothing else, and a locale
+  guessed at is precisely the failure `locale.present` exists to catch.
+
+  So `plan.json` gains an `initialization` section and `schema_version` becomes `2`. That
+  is a version rather than a patch and it lands on its own, before the apply role rather
+  than inside it, with the goldens regenerated as a diff somebody reads. Two smaller
+  answers travel with it: apply resolves a configuration template by the filename the plan
+  gives, under the profile the plan names -- rendering is not deciding, since every value
+  poured into it comes from the plan -- and a generated secret is written through one sink
+  whose implementation is a role variable, so that the path a password takes is identical
+  under Semaphore and under a container.
+
+  It is also the argument for putting locale and encoding in the artifact rather than
+  leaving them implicit. They are the two decisions on that list that cannot be changed
+  afterwards without a dump and a reload, which makes them the ones a plan should have
+  been stating all along.
 - **The plan contract is frozen.** `plan` produces artifacts, fourteen of them are
   committed under `test/golden/`, nested by engine, and every change to `plan.json` from here is a version of the
   contract rather than a patch. What it gained on the way in: `parameters` carry a
@@ -270,7 +294,8 @@ line in `layout.yml` changes and the warning stops.
   declared: which configuration files get written and where, which host settings get
   changed, and what secrets exist. Inferring any of it would have meant the core guessing
   at engine knowledge, so it is declared instead (ADR-0018). An `initialization` section
-  is deliberately absent until apply exists to consume one.
+  was deliberately absent until apply existed to consume one; it is now known to be
+  needed, and what it costs is below.
 - **Two fixture hosts produce a plan and three are refused.** `rocky` and `small` are
   blocked by the support matrix, `crowded` by four rules at once. That ratio is the
   fixtures doing their job, and the refusals are committed as goldens for the same reason
