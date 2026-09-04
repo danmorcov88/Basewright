@@ -1,0 +1,13 @@
+---
+# A profile is a directory of declarative YAML that this project defines and validates
+# against its own JSON Schema. One of its eight files is called requirements.yml, which is
+# also the name Galaxy uses for something entirely different -- so the linter is told these
+# are ordinary YAML rather than left to guess and be wrong about every profile in the
+# repository.
+kinds:
+  - yaml: "profiles/**/*.yml"
+  - yaml: "test/fixtures/profiles/**/*.yml"
+
+exclude_paths:
+  - .venv/
+  - .git/

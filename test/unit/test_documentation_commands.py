@@ -71,3 +71,16 @@ def test_no_command_in_the_readme_is_a_near_miss_of_a_real_one() -> None:
             f"the README says to run `{command}`, which is not a command any picture in it "
             "was produced by. Either capture it, or write it as a placeholder."
         )
+
+
+#: A playbook is the entry point for anything that reaches a machine (ADR-0020), so the
+#: README names one. It cannot be captured -- there is no host in CI to point it at -- but
+#: the path it names can be checked, which is the half of the claim that can go stale.
+PLAYBOOK = re.compile(r"^ansible-playbook\s+(\S+)", re.MULTILINE)
+
+
+def test_every_playbook_the_readme_tells_you_to_run_exists() -> None:
+    named = PLAYBOOK.findall(readme())
+    assert named, "the README names no playbook, though a playbook is how a verb is run"
+    missing = [path for path in named if not (ROOT / path).is_file()]
+    assert not missing, f"the README points at playbooks that do not exist: {missing}"

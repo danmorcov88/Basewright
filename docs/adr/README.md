@@ -11,7 +11,7 @@ on the merits, and supersede when the merits change.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/decisions-dark.svg">
-  <img alt="The nineteen decision records, grouped by the question each one answers"
+  <img alt="The twenty decision records, grouped by the question each one answers"
        src="../assets/decisions-light.svg" width="980">
 </picture>
 
@@ -38,6 +38,7 @@ on the merits, and supersede when the merits change.
 | [0017](0017-a-plan-is-named-by-its-content.md)        | A plan is named by its content                                       |
 | [0018](0018-what-apply-will-do-is-declared.md)        | What apply will do is declared, not inferred                         |
 | [0019](0019-exit-codes-are-the-contract.md)           | Exit codes are the contract with Semaphore                           |
+| [0020](0020-the-playbook-is-the-entry-point.md)       | The playbook is the entry point; the CLI reads documents             |
 
 ## Reading order
 

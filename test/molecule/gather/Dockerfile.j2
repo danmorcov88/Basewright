@@ -1,0 +1,17 @@
+# A target that behaves like a server rather than like a container: systemd is running, so
+# the collector enumerates services the way it will on a real host. An image with the tools
+# already baked in would test a shorter path than the one that runs in production.
+FROM {{ item.image }}
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends systemd systemd-sysv python3 iproute2 locales sudo \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -f /lib/systemd/system/multi-user.target.wants/* \
+          /etc/systemd/system/*.wants/* \
+          /lib/systemd/system/local-fs.target.wants/* \
+          /lib/systemd/system/sockets.target.wants/*udev* \
+          /lib/systemd/system/basic.target.wants/*
+
+CMD ["/lib/systemd/systemd"]

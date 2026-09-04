@@ -1,0 +1,57 @@
+---
+# Molecule builds its own Ansible configuration and does not read the one at the
+# repository root, so the two paths that make this repository's layout work are given
+# here as well. They are the same paths, named twice, which is the price of the scenario
+# living under test/ rather than inside the role.
+# Idempotence is deliberately not in the sequence. A collector is not idempotent and
+# should not be: the document it writes records the moment it was collected, so a second
+# run producing a byte-identical file would mean the collector had lied about when it
+# looked. The check would pass only if this role reported a fresh observation as no change.
+#
+# What idempotence would have been worth here -- proof that the role changes nothing on the
+# target -- is asserted directly instead, by test/unit/test_gather_is_read_only.py, which
+# reads the tasks rather than one run of them.
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - verify
+    - cleanup
+    - destroy
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/ansible/roles
+    ANSIBLE_FILTER_PLUGINS: ${MOLECULE_PROJECT_DIRECTORY}/ansible/plugins/filter
+
+driver:
+  name: docker
+platforms:
+  - name: gather-ubuntu2404
+    image: ubuntu:24.04
+    pre_build_image: false
+    privileged: true
+    cgroupns_mode: host
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp
+  - name: gather-debian12
+    image: debian:12
+    pre_build_image: false
+    privileged: true
+    cgroupns_mode: host
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp

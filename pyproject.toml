@@ -39,6 +39,15 @@ dev = [
     "yamllint>=1.35",
 ]
 
+# The control node's tools. A separate extra because they are needed to run a playbook and
+# not to read a plan: `pip install basewright` on a laptop should not pull in a control node.
+ansible = [
+    "ansible-core>=2.16",
+    "ansible-lint>=24.2",
+    "molecule>=24.2",
+    "molecule-plugins[docker]>=23.5",
+]
+
 [project.scripts]
 basewright = "basewright.cli:main"
 
@@ -74,7 +83,7 @@ known-first-party = ["basewright"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["basewright", "tools"]
+files = ["basewright", "tools", "ansible/plugins"]
 strict = true
 warn_unreachable = true
 pretty = true

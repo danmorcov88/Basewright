@@ -441,6 +441,44 @@ def _refuse(message: str) -> None:
         print(line, file=sys.stderr)
 
 
+#: How far the label column runs, so a folded list lines up under itself rather than under
+#: its label.
+_FACT_INDENT = 18
+
+
+def _listed(label: str, values: Sequence[str]) -> list[str]:
+    """One fact whose value is a short list, folded to the width every report uses.
+
+    A hand-written fixture has one listening port and a real machine has a dozen. On one
+    line that is longer than a terminal, which is the kind of thing only running against a
+    real machine tells you.
+    """
+    if not values:
+        return [f"  {label:<15} none"]
+
+    indent = " " * _FACT_INDENT
+    folded = wrapped(", ".join(values), width=REPORT_WIDTH - _FACT_INDENT)
+    return [f"  {label:<15} {folded[0]}", *(f"{indent}{line}" for line in folded[1:])]
+
+
+def _counted(values: Sequence[str], noun: str) -> str:
+    """How many of something, and which ones while that still fits on the line.
+
+    The first real host this was run against reported a hundred and nine services. Naming
+    them is forty lines that only a profile could interpret, because the core recognises no
+    service by name -- and the rule that can interpret them is in preflight, which names the
+    one that matters. A fixture with one service is a different case, and worth spelling
+    out. What decides between them is how much fits on a line, which is a fact about the
+    page rather than a judgement about the host.
+    """
+    if not values:
+        return "none"
+
+    total = f"{len(values)} {noun}" if len(values) == 1 else f"{len(values)} {noun}s"
+    spelled = f"{total}: {', '.join(values)}"
+    return spelled if len(spelled) <= REPORT_WIDTH - _FACT_INDENT else total
+
+
 def render(host: HostFacts) -> str:
     """A short summary of what the host is.
 
@@ -463,11 +501,9 @@ def render(host: HostFacts) -> str:
         state = "synchronized" if host.time_sync.synchronized else "NOT synchronized"
         lines.append(f"  time sync       {host.time_sync.service}, {state}")
 
-    listening = ", ".join(str(port.port) for port in host.listening_ports) or "none"
-    lines.append(f"  listening       {listening}")
-
-    installed = ", ".join(f"{s.name} {s.version or ''}".strip() for s in host.services) or "none"
-    lines.append(f"  installed       {installed}")
+    lines.extend(_listed("listening", [str(port.port) for port in host.listening_ports]))
+    installed = [f"{s.name} {s.version or ''}".strip() for s in host.services]
+    lines.append(f"  {'installed':<15} {_counted(installed, 'service')}")
 
     lines.append("")
     lines.append(f"Facts collected {host.collected_at:%Y-%m-%dT%H:%M:%SZ}. Nothing was changed.")

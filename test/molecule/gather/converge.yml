@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Read what the host is, into a document beside this scenario
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_output_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"

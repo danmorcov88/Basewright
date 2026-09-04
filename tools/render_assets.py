@@ -599,6 +599,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         (
             ("0002", "engines are data"),
             ("0008", "Python decides, Ansible acts"),
+            ("0020", "the playbook is the entry point"),
             ("0011", "packages, never source"),
             ("0014", "rules are expressions"),
             ("0015", "shared gates are code"),
@@ -778,6 +779,40 @@ def render_profile_anatomy(theme: Theme) -> str:
             "A ninth schema covers plan.json, the artifact these eight produce and the only "
             "thing apply reads.",
         ),
+    )
+
+
+#: How a verb runs, once there is a machine at the end of it. Each step names what does the
+#: work, because the whole arrangement is an answer to the question of which half is in
+#: charge -- and the answer is not the one most tools give (ADR-0020).
+VERB_PIPELINE: tuple[tuple[str, str, str], ...] = (
+    ("Semaphore", "runs the playbook, holds the key", "the operator's interface"),
+    ("playbook", "reaches the host and reads it", "ansible/playbooks/gather.yml"),
+    ("host", "answers; nothing about it changes", "the machine, over SSH"),
+    ("facts.json", "what it said, in the frozen contract", "written on the control node"),
+    ("basewright", "reads the document back, and reports", "no network, no host, no SSH"),
+)
+
+
+def render_verb_pipeline(theme: Theme) -> str:
+    """Which half of the tool is in charge, and where the two of them meet."""
+    return render_table(
+        theme,
+        title="How a verb runs: the playbook is the entry point, not the CLI",
+        subtitle=(
+            "The deciding half never reaches a machine. That is what keeps it a pure "
+            "function of a document, and testable without one."
+        ),
+        headings=("STEP", "WHAT IT DOES", "WHAT IT IS"),
+        rows=VERB_PIPELINE,
+        footer=(
+            "The document a playbook writes and the fixtures committed under test/ are the "
+            "same kind of thing, read by the same code.",
+            "So a fixture is not a simulation of a collected host. It is a collected host "
+            "with the collection done earlier.",
+        ),
+        columns=(20, 130, 460),
+        width=940,
     )
 
 
@@ -1003,6 +1038,11 @@ CAPTURES: tuple[Capture, ...] = (
             "test/fixtures/profiles/exampledb",
         ),
     ),
+    Capture(
+        "cli-collected",
+        "a host the playbook actually went and read",
+        ("basewright.cli", "gather", "--facts", "test/fixtures/hosts/collected.json"),
+    ),
     Capture("cli-verify", "a verb that is not built, saying so", ("basewright.cli", "verify")),
     Capture(
         "profile-refused",
@@ -1044,6 +1084,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"plan-anatomy-{suffix}.svg"] = render_plan_anatomy(theme)
         assets[ASSETS / f"sizing-journey-{suffix}.svg"] = render_sizing_journey(theme)
         assets[ASSETS / f"exit-codes-{suffix}.svg"] = render_exit_codes(theme)
+        assets[ASSETS / f"verb-pipeline-{suffix}.svg"] = render_verb_pipeline(theme)
         for entry in CAPTURES:
             assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
                 entry.title, printed[entry.name], theme

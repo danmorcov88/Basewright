@@ -1,0 +1,103 @@
+---
+# What the scenario is actually for. The role writing a file proves nothing; the file
+# holding up against the contract, and then being usable by the step that consumes it,
+# proves the collector and the core still agree about what a host is.
+- name: Verify
+  hosts: all
+  gather_facts: false
+
+  vars:
+    facts_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"
+    facts_path: "{{ facts_dir }}/{{ inventory_hostname }}.json"
+    project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+
+  tasks:
+    - name: Read the document that was written for this host
+      ansible.builtin.slurp:
+        src: "{{ facts_path }}"
+      delegate_to: localhost
+      become: false
+      register: written
+
+    - name: Take it apart
+      ansible.builtin.set_fact:
+        collected: "{{ written.content | b64decode | from_json }}"
+
+    - name: The document says what the contract requires it to say
+      ansible.builtin.assert:
+        that:
+          - collected.schema_version == '1'
+          - collected.host == inventory_hostname
+          - collected.collected_at is match('^[0-9-]{10}T[0-9:]{8}Z$')
+          - collected.os.family == 'debian'
+          - collected.arch in ['x86_64', 'amd64', 'aarch64', 'arm64', 'ppc64le', 's390x']
+          - collected.cpu.cores >= 1
+          - collected.memory.total_bytes > 0
+          - collected.mounts | length > 0
+          - collected.locales | length > 0
+        fail_msg: The collected document does not describe a host the core would recognise.
+
+    - name: The host was asked about services, and answered
+      ansible.builtin.assert:
+        that:
+          - collected.services | length > 0
+          - collected.services | rejectattr('state', 'in', ['running', 'stopped', 'installed'])
+            | list | length == 0
+        fail_msg: >-
+          An empty or unstated service list is what makes a conflict rule pass on a host
+          that already runs the thing being provisioned. It is the failure this scenario
+          exists to catch.
+
+    - name: The account this ran as can do the work a later step will need
+      ansible.builtin.assert:
+        that:
+          - collected.privileges.can_escalate
+        fail_msg: >-
+          Escalation was not established. A key that works and a sudo rule that does not is
+          the failure that otherwise surfaces halfway through an apply.
+
+    - name: A fact nobody could collect is absent rather than invented
+      ansible.builtin.assert:
+        that:
+          - "'time_sync' not in collected or collected.time_sync.service is defined"
+          - "'firewall' not in collected or collected.firewall.service is defined"
+          - "'reachable_repositories' not in collected"
+        fail_msg: >-
+          An optional fact is either reported properly or left out. Absent means nobody
+          asked and the rule skips; a half-filled object would be read as an answer.
+
+    - name: The core reads it back and agrees it is a host
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli
+          gather --facts {{ facts_path | quote }}
+        chdir: "{{ project }}"
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      register: read_back
+
+    - name: The gate engine runs every rule against it without a special case
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli preflight
+          --facts {{ facts_path | quote }}
+          --profile test/fixtures/profiles/exampledb
+          --host {{ inventory_hostname }}
+        chdir: "{{ project }}"
+      changed_when: false
+      # A collected host is a real machine and may fail a gate, which is a verdict rather
+      # than a defect. What is being proved is that a document that came off a wire is the
+      # same kind of thing as the fixtures, all the way through to a rendered report.
+      failed_when: preflighted.rc not in [0, 2]
+      delegate_to: localhost
+      become: false
+      register: preflighted
+
+    - name: Say what the pipeline made of it
+      ansible.builtin.debug:
+        msg:
+          - "{{ read_back.stdout_lines | first }}"
+          - "preflight exited {{ preflighted.rc }} over {{ collected.services | length }} services"
+          - "{{ collected.mounts | length }} mounts,
+             {{ collected.network.listening_ports | length }} listening ports"
