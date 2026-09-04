@@ -5,6 +5,14 @@
 gather_output_dir: "{{ playbook_dir }}/../../facts"
 gather_output_path: "{{ gather_output_dir }}/{{ inventory_hostname }}.json"
 
+# Write the document at all. A caller that wants the answer rather than the artifact --
+# apply, checking whether the host is still the machine its plan was built from -- reads
+# `gather_collected` and passes it through the same filter the template uses, so there is
+# still one definition of what a document is. It is off for that caller because a document
+# records the moment it was collected, so writing one on every apply would report a change
+# on every run of a step that has to be idempotent.
+gather_write: true
+
 # Read the document back through the model every rule is written against, and fail if it
 # does not hold up. The contract is enforced by the tool that consumes it rather than by a
 # second copy of the schema living in Ansible, which is the only way the two cannot drift.

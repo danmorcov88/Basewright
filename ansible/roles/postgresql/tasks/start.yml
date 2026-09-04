@@ -1,0 +1,22 @@
+---
+# Starting the instance, and giving it the secrets it needs. Both are last, and in that
+# order: a password is set over a connection to a running server.
+
+- name: Enable the instance and start it
+  ansible.builtin.systemd_service:
+    name: "{{ basewright_plan.packages.service }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+- name: Apply a configuration change before anything is asked of the instance
+  ansible.builtin.meta: flush_handlers
+
+
+- name: Store the secrets this plan names, generating each of them once
+  ansible.builtin.include_tasks: secret.yml
+  loop: "{{ basewright_plan.secrets }}"
+  loop_control:
+    loop_var: common_secret
+    label: "{{ common_secret.name }}"

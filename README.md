@@ -153,11 +153,12 @@ real value, from the rule that produced it to the line it occupies in a plan:
 
 ## Quickstart
 
-**Not the whole loop yet, and it says so rather than pretending.** There is a real engine
-profile now, and `gather` reads a real host — but `apply` is Ansible's half and is not
-written, so nothing here provisions a server end to end. What follows is every step that
-does work, run against documents committed under `test/`, which is what makes each command
-below copy-pasteable and each picture reproducible.
+**Not the whole loop yet, and it says so rather than pretending.** Four of the five verbs
+work: a bare container is read, gated, planned for and provisioned, and CI proves that on
+every pull request. `verify` is the one that is not written, so the loop does not close —
+nothing yet reads the running instance back and proves it is what the plan promised. What
+follows is every step that works, run against documents committed under `test/`, which is
+what makes each command below copy-pasteable and each picture reproducible.
 
 Every command below is copy-pasteable after `make install`, and every one of them is the
 command that produced the picture underneath it: `tools/render_assets.py` runs them to make
@@ -304,7 +305,37 @@ basewright verify
 </picture>
 
 `apply` is not a verb of this CLI at all, and never will be: applying is Ansible's job, and
-the plan is the boundary between them. Four verbs exist as an interface already:
+the plan is the boundary between them. It is a playbook, and it takes one input:
+
+```
+ansible-playbook ansible/playbooks/apply.yml -l db-01.example.invalid   -e basewright_plan_file=plan.json -e basewright_accept_warnings=true
+```
+
+Before it touches anything, four things have to be true: the plan is a plan and this build
+understands its contract, it has not been edited since it was approved, the host is still
+the machine it was built from, and its warnings have been acknowledged by somebody. Then the
+phases run, in the order the plan lists its own changes in:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/apply-phases-dark.svg">
+  <img alt="The phases of applying a plan, in order, and which half of the tool runs each"
+       src="docs/assets/apply-phases-light.svg" width="960">
+</picture>
+
+That picture is drawn from the playbook rather than written beside it, so a phase added or
+reordered redraws it. The two halves interleave because the order belongs to the plan rather
+than to the roles — a profile whose vendor package makes the service account cannot have its
+directories owned before the packages are installed, which is a thing a real container found
+rather than a thing anybody predicted.
+
+Applying is proved in CI rather than pictured, because a package version and a moment are
+not things a byte-for-byte image can carry. `molecule test -s apply` takes a bare Ubuntu
+container, reads it, plans for it, applies the plan, applies it again and finds nothing to
+do, and then asks the running instance whether it is what the plan promised — down to the
+encoding and the locale it was created with, which are the two things that cannot be changed
+afterwards.
+
+Four verbs exist as an interface already:
 
 ```
 basewright --help
@@ -375,16 +406,18 @@ engine name appears in the core.
 
 | Engine        | OS families           | Versions   | Status                       |
 | ------------- | --------------------- | ---------- | ---------------------------- |
-| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | plans; does not apply yet |
+| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | plans and applies    |
 | PostgreSQL    | RHEL / Rocky          | —          | planned                      |
 | MySQL/MariaDB | Debian / Ubuntu       | —          | planned                      |
 | SQL Server    | Windows               | —          | planned                      |
 
 `profiles/postgresql/` is eight declarative files and one template directory. It gates a
-host, sizes seventeen parameters and produces a complete plan; what it cannot do yet is
-apply one, because `apply` is Ansible's half and is Phase A's next slice. Nothing under
-`basewright/` knows the word PostgreSQL, and a test reads every line of the core to keep
-that true.
+host, sizes seventeen parameters, produces a complete plan, and that plan is applied by
+`ansible/roles/postgresql/` — which is the one directory in this repository where the word
+is allowed to appear. What is left is `verify`: reading the running instance back and
+proving it is what the plan promised, rather than asserting a handful of things about it in
+a test scenario. Nothing under `basewright/` knows the word PostgreSQL, and a test reads
+every line of the core to keep that true.
 
 The values that had to be assumed rather than confirmed — path conventions, the service
 account, the locale, the authentication rules, the minimums that become blocks — are listed
@@ -507,13 +540,13 @@ committed — a stale picture fails the build the way a stale test does.
 
 ## Architecture decisions
 
-Twenty-two decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
+Twenty-three decisions are recorded in [docs/adr/](docs/adr/), each with the context that forced
 it, what it costs, and the alternatives that were rejected. The four that shape everything
 else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The twenty-two decision records, grouped by the question each one answers"
+  <img alt="The twenty-three decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 

@@ -1,0 +1,20 @@
+---
+# Where a generated secret is written. Semaphore's own store is the real target and it
+# arrives with the Semaphore templates in Phase B; until then there is one implementation,
+# and it is named rather than assumed so that the second one is a file beside `secret.yml`
+# rather than a change to everything that calls it.
+common_secret_stores: [file]
+common_secret_store: file
+
+# The file store keeps secrets on the control node, under a directory only its owner can
+# read, at the location the plan names. The plan says where a secret lives and never what
+# it is (ADR-0007), and this is what "where" resolves to for this store.
+common_secret_dir: "{{ lookup('env', 'HOME') }}/.basewright/secrets"
+common_secret_path: "{{ common_secret_dir }}/{{ common_secret.location }}"
+
+# `basewright_plan` is not declared here on purpose. It is the play's variable, read by
+# every role and owned by none of them, and a default for it would be a role quietly
+# carrying on with an empty plan rather than failing where the mistake was made.
+
+# Where the host settings the plan asks for are written down.
+common_sysctl_file: /etc/sysctl.d/60-basewright.conf

@@ -1,0 +1,55 @@
+---
+# `basewright_plan` is not declared here on purpose. It is the play's variable, read by
+# every role and owned by none of them, and a default for it would be a role quietly
+# carrying on with an empty plan rather than failing where the mistake was made.
+
+# Reading the plan, in the words this engine uses. Not decisions: the values are the plan's
+# and these are the names to find them under, kept here rather than repeated in three task
+# files where two of them would eventually disagree.
+postgresql_created_with: >-
+  {{ dict(basewright_plan.initialization.settings | map(attribute='name')
+          | zip(basewright_plan.initialization.settings | map(attribute='value'))) }}
+postgresql_data_path: >-
+  {{ (basewright_plan.layout.paths | selectattr('purpose', 'eq', 'data') | first).path }}
+postgresql_wal_path: >-
+  {{ (basewright_plan.layout.paths | selectattr('purpose', 'eq', 'wal') | first).path }}
+
+# The planned paths that sit inside the data directory. initdb owns the inside of that
+# directory and makes what belongs there itself, so an empty placeholder the shared layout
+# phase created has to be out of the way before the cluster is created. Deepest first,
+# because a directory is only removable once nothing is left in it.
+postgresql_paths_inside_data: >-
+  {{ basewright_plan.layout.paths | map(attribute='path')
+     | select('search', '^' ~ postgresql_data_path ~ '/') | list | sort(reverse=true) }}
+
+# Where the vendor's signing key is kept. Named for the repository the plan points at, so
+# that a host provisioned from a mirror and one provisioned from upstream do not quietly
+# share a keyring.
+postgresql_keyring: >-
+  /etc/apt/keyrings/basewright-{{ basewright_plan.packages.repository.name }}.asc
+
+# How the cluster is created. Every value comes from the plan: the version and instance it
+# is named for, the port it listens on, the directory it lives in, and the locale and
+# encoding it is created with -- the three things that cannot be changed afterwards without
+# dumping and reloading everything in it.
+#
+# The write-ahead log is only named when it is somewhere other than where initdb would put
+# it anyway. Passing --waldir for the default location would ask initdb to create a
+# directory inside a data directory that does not exist yet.
+postgresql_create_argv: >-
+  {{
+    [
+      'pg_createcluster',
+      basewright_plan.request.version | string,
+      basewright_plan.request.instance,
+      '--datadir=' ~ postgresql_data_path,
+      '--port=' ~ basewright_plan.request.port,
+      '--locale=' ~ basewright_plan.initialization.locale,
+      '--encoding=' ~ postgresql_created_with.encoding,
+      '--start-conf=' ~ postgresql_created_with.start_conf,
+      '--',
+    ]
+    + (['--data-checksums'] if postgresql_created_with.data_checksums else [])
+    + ([] if postgresql_wal_path == postgresql_data_path ~ '/pg_wal'
+       else ['--waldir=' ~ postgresql_wal_path])
+  }}

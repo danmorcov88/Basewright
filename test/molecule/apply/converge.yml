@@ -1,0 +1,17 @@
+---
+# What is under test, and nothing else. Everything that had to be true for a plan to exist
+# happened in prepare; this is the step that changes the machine, run exactly as Semaphore
+# would run it -- the playbook itself, not a copy of what it does.
+#
+# Molecule runs this twice. The second run is the promise apply makes.
+- name: Import the playbook that applies a plan
+  ansible.builtin.import_playbook: ../../../ansible/playbooks/apply.yml
+  vars:
+    basewright_plan_file: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts/plan.json
+    common_secret_dir: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/secrets
+    # The plan a container produces carries warnings -- the write-ahead log shares a mount
+    # with the data directory by default, and the profile says so. Acknowledging them is
+    # what an operator does, and doing it here is the scenario behaving like one.
+    basewright_accept_warnings: true

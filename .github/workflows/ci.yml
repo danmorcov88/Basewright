@@ -219,6 +219,21 @@ jobs:
           ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
           PY_COLORS: "1"
 
+      # The whole path, against a container that starts bare: read it, plan for it, apply
+      # the plan, apply it again, and then ask the instance whether it is what the plan
+      # promised. Idempotence is IN this sequence, unlike the one above, because a second
+      # run reporting no change is the promise apply makes.
+      #
+      # This is the one job that needs the public internet, and unavoidably so: it installs
+      # from the vendor repository, which is what the whole tool is for. Everything else
+      # here runs offline on purpose.
+      - name: Applying a plan, and applying it twice
+        run: python -m molecule test -s apply
+        env:
+          MOLECULE_GLOB: test/molecule/*/molecule.yml
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+          PY_COLORS: "1"
+
   docs:
     name: Docs
     runs-on: ubuntu-24.04

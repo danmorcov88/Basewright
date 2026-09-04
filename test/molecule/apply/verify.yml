@@ -1,0 +1,144 @@
+---
+# What the scenario is actually for. That apply ran without failing proves very little; the
+# instance being the one the plan described is the whole claim, and it is the claim `verify`
+# will make properly in A4. What is asserted here is what apply itself promised.
+- name: Verify
+  hosts: all
+  gather_facts: false
+
+  vars:
+    ephemeral: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+    plan: "{{ lookup('file', ephemeral ~ '/facts/plan.json') | from_json }}"
+
+  tasks:
+    - name: The instance is running under the unit the plan named
+      ansible.builtin.systemd_service:
+        name: "{{ plan.packages.service }}"
+      register: unit
+      failed_when: unit.status.ActiveState != 'active'
+      changed_when: false
+      become: true
+
+    - name: It answers on the port the plan named, as the account the plan named
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --port={{ plan.request.port }}
+          - --command=SHOW server_version_num
+      become: true
+      become_user: "{{ plan.layout.service_account.name }}"
+      changed_when: false
+      register: version
+
+    - name: It is the version that was requested
+      ansible.builtin.assert:
+        that: version.stdout | int // 10000 == plan.request.version | int
+        fail_msg: >-
+          The running server reports {{ version.stdout }}, and the plan asked for
+          {{ plan.request.version }}. The packages installed are not the ones the plan
+          named, which makes the plan a description of a machine that does not exist.
+
+    - name: Ask the server which settings it has
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --port={{ plan.request.port }}
+          - --command=SELECT name FROM pg_settings
+      become: true
+      become_user: "{{ plan.layout.service_account.name }}"
+      changed_when: false
+      register: settings
+
+
+    - name: The server knows every parameter the plan named
+      ansible.builtin.assert:
+        that: unknown | length == 0
+        fail_msg: >-
+          This build of the server has no setting called {{ unknown | join(', ') }}, so
+          the plan promises values that will never be read. A parameter the server does
+          not have makes the plan a description of a machine that does not exist.
+      vars:
+        unknown: >-
+          {{ plan.parameters | map(attribute='parameter') | difference(settings.stdout_lines) }}
+
+    - name: The cluster was created where the plan said, and with what the plan said
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --field-separator=|
+          - --port={{ plan.request.port }}
+          - --command=SELECT current_setting('data_directory'),
+            pg_encoding_to_char(encoding), datcollate FROM pg_database WHERE datname =
+            'postgres'
+      become: true
+      become_user: "{{ plan.layout.service_account.name }}"
+      changed_when: false
+      register: created
+
+    - name: It matches the initialization section of the plan it came from
+      ansible.builtin.assert:
+        that:
+          - reported[0] == data_path
+          - reported[1] == (settings_by_name.encoding)
+          - reported[2] == plan.initialization.locale
+        fail_msg: >-
+          The cluster reports {{ reported }}. The plan said {{ data_path }},
+          {{ settings_by_name.encoding }} and {{ plan.initialization.locale }}. These are
+          the three things that cannot be changed afterwards, which is why the plan states
+          them and why this is checked rather than assumed.
+      vars:
+        reported: "{{ created.stdout.split('|') }}"
+        data_path: >-
+          {{ (plan.layout.paths | selectattr('purpose', 'eq', 'data') | first).path }}
+        settings_by_name: >-
+          {{ dict(plan.initialization.settings | map(attribute='name')
+                  | zip(plan.initialization.settings | map(attribute='value'))) }}
+
+    - name: Data checksums are on, which cannot be turned on later without downtime
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --port={{ plan.request.port }}
+          - --command=SHOW data_checksums
+      become: true
+      become_user: "{{ plan.layout.service_account.name }}"
+      changed_when: false
+      register: checksums
+      failed_when: checksums.stdout != 'on'
+
+    - name: The secret exists where the plan said it would, and nowhere else
+      ansible.builtin.stat:
+        path: "{{ ephemeral }}/secrets/{{ plan.secrets[0].location }}"
+      delegate_to: localhost
+      become: false
+      register: stored
+
+    - name: It was written once, readable by nobody else, and never into the plan
+      ansible.builtin.assert:
+        that:
+          - stored.stat.exists
+          - stored.stat.mode == '0600'
+          - plan.secrets[0].keys() | list | sort == ['description', 'location', 'name']
+        fail_msg: >-
+          A generated password is written once to the store and named in the plan, never
+          carried by it. There is deliberately nowhere in a plan's secret for a value.
+
+    - name: Say what the instance turned out to be
+      ansible.builtin.debug:
+        msg:
+          - "{{ plan.packages.service }} is {{ unit.status.ActiveState }},
+             server_version_num {{ version.stdout }}"
+          - "{{ plan.parameters | length }} parameters read back,
+             created as {{ created.stdout }}"

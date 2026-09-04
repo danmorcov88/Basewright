@@ -11,36 +11,37 @@ on the merits, and supersede when the merits change.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/decisions-dark.svg">
-  <img alt="The twenty-two decision records, grouped by the question each one answers"
+  <img alt="The twenty-three decision records, grouped by the question each one answers"
        src="../assets/decisions-light.svg" width="980">
 </picture>
 
 ## The records
 
-| #                                                               | Decision                                                            |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [0001](0001-plan-before-apply.md)                               | Plan before apply, and the plan is a durable artifact               |
-| [0002](0002-engines-are-data.md)                                | Engines are data, not code                                          |
-| [0003](0003-humans-choose-the-version.md)                       | Humans choose the version, Basewright validates it                  |
-| [0004](0004-two-severities-no-override.md)                      | Two severities, and a block is never overridable at run time        |
-| [0005](0005-semaphore-is-the-interface.md)                      | Semaphore is the interface; there is no custom web UI               |
-| [0006](0006-dedicated-technical-account.md)                     | A dedicated technical account reaches targets, never personal keys  |
-| [0007](0007-secrets-never-in-artifacts.md)                      | Secrets never appear in inventory, plans, facts or logs             |
-| [0008](0008-python-decides-ansible-acts.md)                     | Python decides, Ansible acts                                        |
-| [0009](0009-sizing-rules-explain-themselves.md)                 | Sizing rules are declarative and carry their own explanation        |
-| [0010](0010-idempotency-match-or-refuse.md)                     | A re-run either matches or refuses, and never surprises             |
-| [0011](0011-native-packages-from-vendors.md)                    | Native packages from vendor repositories; never build from source   |
-| [0012](0012-starts-at-a-reachable-host.md)                      | Basewright starts at a reachable host                               |
-| [0013](0013-backups-are-out-of-scope.md)                        | Backups are out of scope and belong to a separate tool              |
-| [0014](0014-rules-are-expressions-not-code.md)                  | A rule a profile writes is an expression, safely interpreted        |
-| [0015](0015-shared-gates-are-code.md)                           | The shared gates are code; a profile's gates are data               |
-| [0016](0016-plans-carry-canonical-values.md)                    | A plan carries canonical values, not rendered ones                  |
-| [0017](0017-a-plan-is-named-by-its-content.md)                  | A plan is named by its content                                      |
-| [0018](0018-what-apply-will-do-is-declared.md)                  | What apply will do is declared, not inferred                        |
-| [0019](0019-exit-codes-are-the-contract.md)                     | Exit codes are the contract with Semaphore                          |
-| [0020](0020-the-playbook-is-the-entry-point.md)                 | The playbook is the entry point; the CLI reads documents            |
-| [0021](0021-the-collector-is-told-what-is-being-provisioned.md) | The collector is told what is being provisioned, for one fact       |
-| [0022](0022-the-plan-says-how-the-instance-is-created.md)       | The plan says how the instance is created; that made it version two |
+| #                                                               | Decision                                                             |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [0001](0001-plan-before-apply.md)                               | Plan before apply, and the plan is a durable artifact                |
+| [0002](0002-engines-are-data.md)                                | Engines are data, not code                                           |
+| [0003](0003-humans-choose-the-version.md)                       | Humans choose the version, Basewright validates it                   |
+| [0004](0004-two-severities-no-override.md)                      | Two severities, and a block is never overridable at run time         |
+| [0005](0005-semaphore-is-the-interface.md)                      | Semaphore is the interface; there is no custom web UI                |
+| [0006](0006-dedicated-technical-account.md)                     | A dedicated technical account reaches targets, never personal keys   |
+| [0007](0007-secrets-never-in-artifacts.md)                      | Secrets never appear in inventory, plans, facts or logs              |
+| [0008](0008-python-decides-ansible-acts.md)                     | Python decides, Ansible acts                                         |
+| [0009](0009-sizing-rules-explain-themselves.md)                 | Sizing rules are declarative and carry their own explanation         |
+| [0010](0010-idempotency-match-or-refuse.md)                     | A re-run either matches or refuses, and never surprises              |
+| [0011](0011-native-packages-from-vendors.md)                    | Native packages from vendor repositories; never build from source    |
+| [0012](0012-starts-at-a-reachable-host.md)                      | Basewright starts at a reachable host                                |
+| [0013](0013-backups-are-out-of-scope.md)                        | Backups are out of scope and belong to a separate tool               |
+| [0014](0014-rules-are-expressions-not-code.md)                  | A rule a profile writes is an expression, safely interpreted         |
+| [0015](0015-shared-gates-are-code.md)                           | The shared gates are code; a profile's gates are data                |
+| [0016](0016-plans-carry-canonical-values.md)                    | A plan carries canonical values, not rendered ones                   |
+| [0017](0017-a-plan-is-named-by-its-content.md)                  | A plan is named by its content                                       |
+| [0018](0018-what-apply-will-do-is-declared.md)                  | What apply will do is declared, not inferred                         |
+| [0019](0019-exit-codes-are-the-contract.md)                     | Exit codes are the contract with Semaphore                           |
+| [0020](0020-the-playbook-is-the-entry-point.md)                 | The playbook is the entry point; the CLI reads documents             |
+| [0021](0021-the-collector-is-told-what-is-being-provisioned.md) | The collector is told what is being provisioned, for one fact        |
+| [0022](0022-the-plan-says-how-the-instance-is-created.md)       | The plan says how the instance is created; that made it version two  |
+| [0023](0023-drift-is-measured-against-the-plan.md)              | Drift is measured against the plan, and free space is not part of it |
 
 ## Reading order
 

@@ -1,0 +1,9 @@
+---
+# Restarted rather than reloaded. Several of the parameters this plan sizes are ones the
+# server only reads at start-up, and a reload that silently leaves half of them at their
+# old values would make the plan a description of a machine that does not exist.
+- name: Restart the instance
+  ansible.builtin.systemd_service:
+    name: "{{ basewright_plan.packages.service }}"
+    state: restarted
+  become: true

@@ -63,3 +63,30 @@ def directory_for(engine: str) -> Path:
         f"{display(profiles_directory())}/, never editing the core -- see "
         f"docs/dev/writing-a-profile.md."
     )
+
+
+def template_for(engine: str, name: str) -> Path:
+    """The configuration template one plan names, in the profile of the engine it is for.
+
+    Apply consumes the plan and nothing else, and this is the one thing it looks up outside
+    it -- a file, by the name the plan gives, whose every value comes from the plan
+    (ADR-0022). Refusing here means a plan naming a template nothing can render is stopped
+    before the host has been touched, rather than halfway through.
+
+    The name is checked rather than joined, because a plan is a document that arrives from
+    somewhere and a path assembled out of one is a path somebody could aim.
+    """
+    if "/" in name or "\\" in name or name in {"", ".", ".."}:
+        raise UnknownEngineError(
+            f"{name!r} is not a template name. A plan names a file in the profile's "
+            "templates directory, never a path to somewhere else on the control node."
+        )
+
+    candidate = directory_for(engine) / "templates" / name
+    if candidate.is_file():
+        return candidate
+    raise UnknownEngineError(
+        f"the {engine} profile has no template called {name}, which this plan says it "
+        f"writes. Looked in {display(candidate.parent)}/. A plan is applied against the "
+        "profile that produced it, so this is a plan and a profile that no longer agree."
+    )

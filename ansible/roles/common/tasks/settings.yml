@@ -1,0 +1,39 @@
+---
+# The host settings the instance needs, set now and kept after the next reboot.
+#
+# Written to a file as well as set, because a setting that reverts on the next reboot is a
+# problem that comes back at the worst moment -- which is what the warning about it says,
+# and it would be an odd thing to warn about and then do. The file is ours and it is new;
+# whatever the distribution ships in sysctl.d is left where it is.
+
+- name: Write the host settings this instance needs, so they survive a reboot
+  ansible.builtin.copy:
+    dest: "{{ common_sysctl_file }}"
+    content: |
+      # Managed by Basewright, from plan {{ basewright_plan.plan_id }}.
+      #
+      # Every line below carries the reasoning the plan gives for it. Change the profile
+      # rather than this file: the next apply will put it back, and until it does the plan
+      # has stopped describing this machine.
+      {% for tunable in basewright_plan.tunables %}
+
+      # {{ tunable.why | wordwrap(76) | replace('\n', '\n# ') }}
+      {{ tunable.name }} = {{ tunable.value }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+# Loaded every run rather than only when the file changed. The file is the record of what
+# the host is meant to be; loading it is what makes the running kernel agree, and a host
+# where somebody set one of these by hand in the meantime should be put back rather than
+# left because the file happened not to move.
+- name: Make the running kernel agree with what was just written
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - --quiet
+      - --load={{ common_sysctl_file }}
+  become: true
+  changed_when: false
