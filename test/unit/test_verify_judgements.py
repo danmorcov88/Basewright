@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +67,19 @@ def test_every_kind_the_schema_allows_has_a_judgement() -> None:
     schema = json.loads((ROOT / "schema" / "verify.schema.json").read_text(encoding="utf-8"))
     declared = set(schema["$defs"]["check"]["properties"]["kind"]["enum"])
     assert declared == set(JUDGEMENTS)
+
+
+def test_the_readme_lists_every_kind_and_no_others() -> None:
+    """The table an operator reads is the set the tool judges, or it is fiction.
+
+    Same treatment the exit-code table gets, and for the same reason: a documented set that
+    is checked by nobody drifts on the first change and is believed for months afterwards.
+    """
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    listed = re.findall(r"^\| `([a-z]+)` \| .+ \|$", readme, re.MULTILINE)
+
+    assert set(listed) == set(JUDGEMENTS)
+    assert len(listed) == len(JUDGEMENTS), "a kind is listed twice"
 
 
 def test_every_kind_is_exercised_by_the_fixture(readings: dict[str, Any]) -> None:
