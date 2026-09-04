@@ -1,0 +1,81 @@
+PREFLIGHT  db-crowded.invalid -- postgresql 16, instance main
+  15 pass -- 7 warn -- 2 block -- 1 skipped
+
+  BLOCK disk.free_space           data needs 20GB and / has 6.0 GiB free; wal needs 10GB
+                                  and / has 6.0 GiB free; backup needs 50GB and /backup
+                                  has 2.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK host.privilege            basewright cannot escalate
+                                  -> Give the account Basewright connects with
+                                     unattended privilege escalation on this host, or
+                                     connect with one that has it. Installing packages,
+                                     creating an account and writing under /etc are not
+                                     optional parts of provisioning an instance.
+
+  WARN  disk.separate_mounts      log and data both live on /; wal and data both live on
+                                  /
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  firewall.state            firewalld is active and does not admit 5432
+                                  -> Open 5432 to the clients that need it once the
+                                     instance is running. Basewright does not change a
+                                     firewall: what may reach a database is a decision
+                                     about the network, and it is not this tool's to
+                                     make.
+
+  WARN  os.swappiness             vm.swappiness is 60, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  WARN  os.thp                    transparent huge pages are always; this profile
+                                  prefers madvise, never
+                                  -> Set them to madvise or never persistently, in the
+                                     boot configuration rather than only at run time. A
+                                     setting that reverts on the next reboot is a
+                                     problem that comes back at the worst moment.
+
+  WARN  postgresql.storage.rotational
+                                  not path.data.rotational does not hold on this host
+                                  -> Move the data directory to solid state storage if
+                                     this instance is latency sensitive. Rotational
+                                     storage is supported and is sized for -- the
+                                     planner costs random reads differently on it -- but
+                                     it is not the assumption the defaults below are
+                                     written against.
+
+  WARN  postgresql.wal.separate_spindle
+                                  path.wal.mount != path.data.mount does not hold on
+                                  this host
+                                  -> Give the write-ahead log its own mount with a path
+                                     override. Every committed transaction is a
+                                     sequential write here and every checkpoint is a
+                                     burst of random writes to the data directory; on
+                                     one spindle they take turns, and the commit latency
+                                     is what shows it. On solid state storage this
+                                     matters much less and is still worth knowing.
+
+  WARN  time.sync                 chrony is present but not synchronized
+                                  -> Get the clock synchronized before provisioning.
+                                     Timestamps in the log, the ordering in a replicated
+                                     setup and every certificate the instance presents
+                                     all assume the machine knows what time it is.
+
+  SKIP  repo.reachable            the host did not report whether it can reach pgdg
+                                  -> Reaching a repository is proved from the host,
+                                     which happens when the facts are collected over
+                                     SSH. Until then this is unanswered rather than
+                                     assumed, and the first task of apply is where it
+                                     would otherwise be discovered.
+
+REFUSED  2 rules block this host. No plan was produced, and there is no flag that
+         produces one.

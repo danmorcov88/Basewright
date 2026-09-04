@@ -166,7 +166,7 @@ def test_preflight_reports_missing_facts_as_usage(capsys: CaptureFixture[str]) -
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GOLDEN_PLAN = ROOT / "test" / "golden" / "plan" / "typical.json"
+GOLDEN_PLAN = ROOT / "test" / "golden" / "exampledb" / "plan" / "typical.json"
 EDITED_PLAN = ROOT / "test" / "fixtures" / "plan" / "edited.json"
 
 
@@ -477,3 +477,49 @@ def test_facts_that_do_not_hold_up_are_refused_by_every_verb_that_reads_them(
     assert "is required but missing" in capsys.readouterr().err
     assert main(["plan", *arguments]) == 2
     assert "is required but missing" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------- naming an engine by name
+
+ENGINE = "postgresql"
+
+
+def test_an_engine_can_be_named_instead_of_a_directory(capsys: CaptureFixture[str]) -> None:
+    """What an operator has: they know which engine they are provisioning, not where its
+    directory is. The lookup is a lookup, which is the only reason the core may do it."""
+    assert main(["preflight", "--facts", str(FACTS / "typical.json"), "--engine", ENGINE]) == 0
+    assert ENGINE in capsys.readouterr().out
+
+
+def test_naming_an_engine_and_a_directory_at_once_is_refused() -> None:
+    """A request naming both would need a precedence rule, and a precedence rule is a
+    thing somebody eventually relies on without meaning to."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["plan", "--engine", ENGINE, "--profile", "somewhere"])
+
+
+def test_an_engine_nobody_has_a_profile_for_says_which_ones_exist(
+    capsys: CaptureFixture[str],
+) -> None:
+    arguments = ["preflight", "--facts", str(FACTS / "typical.json"), "--engine", "nosuchdb"]
+
+    assert main(arguments) == 64
+    refusal = capsys.readouterr().err
+    assert "no profile for 'nosuchdb'" in refusal
+    assert ENGINE in refusal, "an operator who mistypes is told the names, not to go look"
+
+
+def test_the_usage_message_names_the_engines_this_installation_has(
+    capsys: CaptureFixture[str],
+) -> None:
+    assert main(["plan", "--facts", str(FACTS / "typical.json")]) == 64
+    assert ENGINE in capsys.readouterr().err
+
+
+def test_reading_a_plan_back_will_not_take_an_engine_either(
+    capsys: CaptureFixture[str],
+) -> None:
+    code = main(["plan", "--from", str(GOLDEN_PLAN), "--engine", ENGINE])
+
+    assert code == 64
+    assert "cannot be combined with --engine" in capsys.readouterr().err

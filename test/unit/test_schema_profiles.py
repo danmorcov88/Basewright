@@ -23,7 +23,7 @@ FIXTURES = ROOT / "test" / "fixtures" / "profiles"
 #: The plan the contract is exercised against is a real one, produced by the pipeline and
 #: committed as a golden. A hand-written example would drift from what plan actually emits,
 #: and the drift would be invisible in exactly the direction that matters.
-PLAN_FIXTURE = ROOT / "test" / "golden" / "plan" / "typical.json"
+PLAN_FIXTURE = ROOT / "test" / "golden" / "exampledb" / "plan" / "typical.json"
 
 #: Fixture profiles that are meant to be valid. The others are broken deliberately and
 #: are exercised by the loader's own tests.

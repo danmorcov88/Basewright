@@ -1002,7 +1002,7 @@ CAPTURES: tuple[Capture, ...] = (
     Capture(
         "plan-rendered",
         "the plan, as the person approving it reads it",
-        ("basewright.cli", "plan", "--from", "test/golden/plan/typical.json"),
+        ("basewright.cli", "plan", "--from", "test/golden/postgresql/plan/typical.json"),
     ),
     Capture(
         "plan-edited",
@@ -1015,6 +1015,18 @@ CAPTURES: tuple[Capture, ...] = (
         ("basewright.cli", "gather", "--facts", "test/fixtures/hosts/typical.json"),
     ),
     Capture(
+        "engine-unknown",
+        "an engine nothing has a profile for",
+        (
+            "basewright.cli",
+            "preflight",
+            "--facts",
+            "test/fixtures/hosts/typical.json",
+            "--engine",
+            "mysql",
+        ),
+    ),
+    Capture(
         "preflight-refused",
         "a host that cannot be provisioned",
         (
@@ -1022,8 +1034,8 @@ CAPTURES: tuple[Capture, ...] = (
             "preflight",
             "--facts",
             "test/fixtures/hosts/crowded.json",
-            "--profile",
-            "test/fixtures/profiles/exampledb",
+            "--engine",
+            "postgresql",
         ),
     ),
     Capture(
@@ -1034,8 +1046,8 @@ CAPTURES: tuple[Capture, ...] = (
             "preflight",
             "--facts",
             "test/fixtures/hosts/typical.json",
-            "--profile",
-            "test/fixtures/profiles/exampledb",
+            "--engine",
+            "postgresql",
         ),
     ),
     Capture(
@@ -1114,10 +1126,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             for path, content in assets.items()
             if not path.exists() or path.read_text(encoding="utf-8") != content
         ]
-        if stale:
-            print("These assets are stale. Run: python tools/render_assets.py", file=sys.stderr)
-            for path in sorted(stale):
-                print(f"  {path.relative_to(ROOT).as_posix()}", file=sys.stderr)
+        # An image nothing renders any more is worse than a stale one: it stays committed,
+        # keeps being referenced, and agrees with whatever the documentation says about it
+        # for ever. The golden check has caught these from the start; this one did not,
+        # until a capture was renamed and its old pair sat in the directory unnoticed.
+        orphans = [path for path in sorted(ASSETS.glob("*.svg")) if path not in assets]
+
+        for path in sorted(stale):
+            print(f"stale: {path.relative_to(ROOT).as_posix()}", file=sys.stderr)
+        for path in orphans:
+            name = path.relative_to(ROOT).as_posix()
+            print(f"not produced by any renderer: {name}", file=sys.stderr)
+        if stale or orphans:
+            print(
+                "\nRun: python tools/render_assets.py, and delete what it no longer writes.",
+                file=sys.stderr,
+            )
             return 1
         print(f"{len(assets)} assets are current.")
         return 0

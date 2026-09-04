@@ -1,0 +1,84 @@
+---
+engine: postgresql
+# What "this instance matches its plan" means for this engine. The verify step is built in
+# Phase A and consumes these; they are written now because deciding what would count as
+# proof after seeing the result is not proof.
+checks:
+  - id: postgresql.service.running
+    kind: service
+    title: The cluster's unit is enabled and active
+    remediation: >-
+      Read the unit's journal and the cluster's own log. A cluster that will not start
+      after a clean apply means the plan promised a configuration this host cannot honour,
+      which is a finding about the plan rather than about the machine.
+
+  - id: postgresql.port.listening
+    kind: port
+    title: Listening on the planned address and port, and only there
+    remediation: >-
+      Compare listen_addresses and port in the running configuration against the plan.
+      Listening more widely than planned is the finding, not a detail: it is how a
+      database ends up reachable from a network nobody decided to expose it to.
+
+  - id: postgresql.connection.accepted
+    kind: connection
+    title: An authenticated connection succeeds
+    remediation: >-
+      The cluster is running and will not accept a connection, so the host-based
+      authentication rules and the account do not agree with each other. Until this
+      passes, nothing has been proved about the instance beyond the fact that it started.
+
+  - id: postgresql.version.matches
+    kind: version
+    title: The reported server version is the one that was requested
+    remediation: >-
+      The packages installed are not the ones the plan named. Compare the repository
+      configuration on the host with the one in the plan; a pinned version elsewhere on
+      the machine is the usual cause.
+
+  - id: postgresql.parameters.match
+    kind: parameters
+    title: Every parameter in the plan reads back with the planned value
+    remediation: >-
+      A parameter that does not read back was either overridden by a later configuration
+      file or refused by the server at start-up. Both are worth knowing before anybody
+      uses this instance, because the plan is otherwise a description of a machine that
+      does not exist.
+
+  - id: postgresql.paths.match
+    kind: paths
+    title: The data and the write-ahead log really live where the plan says
+    remediation: >-
+      The cluster is storing data somewhere the plan does not describe. Either the plan is
+      no longer a description of this host, or a path override was applied and not
+      recorded; either way the artifact somebody approved is not what ran.
+
+  - id: postgresql.log.writing
+    kind: log
+    title: The log file exists and has grown since the service started
+    remediation: >-
+      A cluster that is running and writing no log is one nobody will be able to diagnose
+      later. Check the logging configuration and the ownership of the log path.
+
+  - id: postgresql.backup.writable
+    kind: backup
+    title: The service account can write to the backup path
+    remediation: >-
+      Correct the ownership or the mode of the backup path. A backup destination that
+      cannot be written to is otherwise discovered at the one moment nobody has time to
+      fix it.
+
+  - id: postgresql.auth.no_trust
+    kind: auth
+    title: No password-free rule is reachable from a non-local address
+    remediation: >-
+      Remove the rule. An instance that trusts the network is not fit for production, and
+      this check exists because it is an easy mistake to make while getting something
+      working and a very hard one to notice afterwards.
+
+  - id: postgresql.account.no_defaults
+    kind: account
+    title: No role has an empty or default password
+    remediation: >-
+      Set the password from the secret store, or remove the role. A role that anybody can
+      guess their way into makes every other control on this list decorative.

@@ -1,0 +1,194 @@
+---
+engine: postgresql
+# Every parameter carries the rule that produced it and the reason the rule says what it
+# says, because the plan is the product and a number with no argument behind it is the
+# thing this tool exists to replace. The order these are written in is not the order they
+# are computed in: that comes from what each one reads (ADR-0009).
+rules:
+  - id: postgresql.shared_buffers
+    parameter: shared_buffers
+    expr: 0.25 * host.memory.total_bytes
+    unit: bytes
+    min: 128MiB
+    max: 16GiB
+    round_to: 128MiB
+    why: >-
+      A quarter of memory is the long-standing starting point, and the cap is the more
+      interesting half of the rule. Past about sixteen gigabytes the operating system page
+      cache is the better place for the memory: it holds the same pages, it can be
+      reclaimed under pressure, and it does not have to be written back through this
+      buffer pool first. A larger number here is a decision about a specific workload
+      rather than a consequence of a larger machine.
+
+  - id: postgresql.effective_cache_size
+    parameter: effective_cache_size
+    expr: 0.75 * host.memory.total_bytes
+    unit: bytes
+    min: 512MiB
+    round_to: 128MiB
+    why: >-
+      Not an allocation, and nothing is reserved by it. It is what the planner is told to
+      assume is cached between the buffer pool and the page cache, and it decides whether
+      an index scan looks cheaper than a sequential one. Set too low, the planner avoids
+      indexes it would have read from memory.
+
+  - id: postgresql.maintenance_work_mem
+    parameter: maintenance_work_mem
+    expr: host.memory.total_bytes / 16
+    unit: bytes
+    min: 64MiB
+    max: 2GiB
+    round_to: 64MiB
+    why: >-
+      Charged per maintenance operation rather than per connection, and both vacuum and
+      index builds are much faster with room to work in. Capped at two gigabytes because
+      each autovacuum worker takes one of these, so the cost is paid several times over
+      past the point where the return has flattened out.
+
+  - id: postgresql.max_connections
+    parameter: max_connections
+    expr: "100"
+    unit: count
+    warn_above: 400
+    why: >-
+      The upstream default, kept deliberately. Every backend is a process with its own
+      memory, so a larger number here means a larger machine or a smaller work_mem, and
+      neither is free. Past four hundred the answer is a connection pooler rather than a
+      bigger number, which is why that is where the warning sits.
+
+  - id: postgresql.work_mem
+    parameter: work_mem
+    expr: (0.25 * host.memory.total_bytes) / (max_connections * 3)
+    unit: bytes
+    min: 4MiB
+    max: 256MiB
+    round_to: 1MiB
+    why: >-
+      Charged per sort or hash node rather than per connection, and one query can hold
+      several at once, which is what the division by three allows for. It reads
+      max_connections, so the two are computed in that order however they are written
+      here. This is the parameter that turns a busy afternoon into an out-of-memory kill,
+      and it is sized to be survivable rather than fast.
+
+  - id: postgresql.wal_buffers
+    parameter: wal_buffers
+    expr: shared_buffers / 32
+    unit: bytes
+    min: 64KiB
+    max: 16MiB
+    round_to: 64KiB
+    why: >-
+      A thirty-second of the buffer pool, capped where PostgreSQL's own automatic setting
+      stops. Beyond one log segment there is nothing further to buffer: the log is written
+      and flushed on commit either way.
+
+  - id: postgresql.min_wal_size
+    parameter: min_wal_size
+    expr: 1 * GiB
+    unit: bytes
+    why: >-
+      The floor the log is allowed to shrink back to. Recycling segments already on disk
+      costs nothing; creating them again during the next burst costs a write per segment,
+      at the worst possible moment.
+
+  - id: postgresql.max_wal_size
+    parameter: max_wal_size
+    expr: 4 * GiB
+    unit: bytes
+    why: >-
+      How much log may accumulate before a checkpoint is forced. Larger means fewer
+      checkpoints and less write amplification, and a longer recovery after a crash. Four
+      gigabytes is roughly where most workloads stop noticing either, and it is what the
+      free space floor on the wal path is set to cover several times over.
+
+  - id: postgresql.checkpoint_completion_target
+    parameter: checkpoint_completion_target
+    expr: "0.9"
+    unit: ratio
+    why: >-
+      Spread a checkpoint's writes across nine tenths of the interval rather than issuing
+      them as fast as the disk will take them. The alternative is a periodic stall that
+      shows up in commit latency and nowhere else, which is very hard to explain to
+      whoever reports it.
+
+  - id: postgresql.max_worker_processes
+    parameter: max_worker_processes
+    expr: host.cpu.cores if host.cpu.cores > 8 else 8
+    unit: count
+    max: 64
+    why: >-
+      One per core above eight, and the upstream default of eight below that: a small
+      machine is not improved by having fewer background workers than PostgreSQL assumes
+      it has. This is a ceiling on processes rather than a reservation of them.
+
+  - id: postgresql.max_parallel_workers
+    parameter: max_parallel_workers
+    expr: max_worker_processes
+    unit: count
+    why: >-
+      Every parallel worker comes out of the pool above, so allowing more of them than
+      exist would be a number that means nothing. They are kept equal by reading it, so
+      that the relationship is visible in the plan rather than implied by two numbers that
+      happen to match.
+
+  - id: postgresql.max_parallel_workers_per_gather
+    parameter: max_parallel_workers_per_gather
+    expr: host.cpu.cores // 2
+    unit: count
+    min: 2
+    max: 8
+    why: >-
+      Half the cores, so one large query cannot take the whole machine and leave every
+      other connection queued behind it. Capped at eight because past that the
+      coordination between workers costs more than the parallelism returns on anything
+      but a pure scan.
+
+  - id: postgresql.max_parallel_maintenance_workers
+    parameter: max_parallel_maintenance_workers
+    expr: host.cpu.cores // 4
+    unit: count
+    min: 2
+    max: 4
+    why: >-
+      Index builds parallelise well and are usually run while something else is using the
+      machine, so this is deliberately smaller than the per-query limit. Each worker also
+      takes its own maintenance_work_mem, which is the real reason for the cap.
+
+  - id: postgresql.autovacuum_max_workers
+    parameter: autovacuum_max_workers
+    expr: host.cpu.cores // 4
+    unit: count
+    min: 3
+    max: 8
+    why: >-
+      Three is the upstream default and is enough for a small machine. More cores usually
+      means more tables written to at once, and autovacuum falling behind is the failure
+      that stays invisible until the day a table is twice the size it should be.
+
+  - id: postgresql.random_page_cost
+    parameter: random_page_cost
+    expr: 1.1 if not path.data.rotational else 4.0
+    unit: ratio
+    why: >-
+      On solid state storage a random read costs very nearly what a sequential one does,
+      and a planner told otherwise avoids indexes it should be using. Four is the upstream
+      default and is written for a disk with a seek to pay for. This is the one parameter
+      here whose right answer is a property of the hardware rather than of the workload.
+
+  - id: postgresql.effective_io_concurrency
+    parameter: effective_io_concurrency
+    expr: 200 if not path.data.rotational else 2
+    unit: count
+    why: >-
+      How many reads the storage can usefully have in flight at once, which is what a
+      bitmap heap scan uses to decide how far ahead to prefetch. Two hundred describes a
+      device that queues internally; two describes a device with one arm.
+
+  - id: postgresql.default_statistics_target
+    parameter: default_statistics_target
+    expr: "100"
+    unit: count
+    why: >-
+      The upstream default, here to be visible rather than to be changed. Raising it is a
+      per-column decision taken after a bad plan has been diagnosed, not something to do
+      to every column of every table in advance.

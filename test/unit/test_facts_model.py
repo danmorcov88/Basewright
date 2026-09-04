@@ -18,7 +18,7 @@ from basewright.planner.schema import plan_problems
 from basewright.units import parse_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
-GOLDEN_PLAN = ROOT / "test" / "golden" / "plan" / "typical.json"
+GOLDEN_PLAN = ROOT / "test" / "golden" / "exampledb" / "plan" / "typical.json"
 HOSTS = ROOT / "test" / "fixtures" / "hosts"
 
 #: Every fixture host, and the one thing each of them is for.

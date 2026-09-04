@@ -1,0 +1,53 @@
+---
+engine: postgresql
+# What apply will do, declared rather than inferred (ADR-0018). Everything here is
+# something a person reviewing a plan is entitled to see before it happens.
+configuration:
+  - id: postgresql.tuning
+    template: basewright.conf.j2
+    # A drop-in, not a replacement. The Debian packaging already sets `include_dir` to this
+    # directory, so the sized parameters land in a file of our own that reads as a diff
+    # against the packaged configuration -- and the packaged file, which the vendor updates,
+    # is never touched. Nothing has to be merged, and nothing has to be put back.
+    destination: /etc/postgresql/{{ version }}/{{ instance }}/conf.d/basewright.conf
+    mode: "0640"
+    owner: postgres
+    carries_parameters: true
+    description: >-
+      The sized parameters, as a drop-in read after the packaged configuration. Every value
+      in it is one the plan explains.
+
+  - id: postgresql.host_based_auth
+    template: pg_hba.conf.j2
+    destination: /etc/postgresql/{{ version }}/{{ instance }}/pg_hba.conf
+    mode: "0640"
+    owner: postgres
+    description: >-
+      Which connections are accepted and how they prove who they are. Written rather than
+      added to, because access is not something to leave inherited.
+
+tunables:
+  - name: vm.swappiness
+    value: 10
+    observed: host.kernel.swappiness
+    why: >-
+      An instance whose shared buffers the kernel has swapped out pays for that memory
+      twice: once to hold it and again to fault it back in, during whatever query noticed.
+      Ten leaves the kernel room to swap under genuine pressure without doing it for the
+      sake of the page cache.
+
+  - name: vm.overcommit_memory
+    value: 2
+    observed: host.kernel.overcommit_memory
+    why: >-
+      Refusing an allocation the machine cannot honour is better than granting it and
+      leaving the out-of-memory killer to choose which process dies -- because it chooses
+      the largest one, and on this machine that is the postmaster. PostgreSQL's own
+      documentation asks for this setting for exactly that reason.
+
+secrets:
+  - name: superuser password
+    location: basewright/{{ host }}/{{ engine }}/{{ instance }}/superuser
+    description: >-
+      The cluster superuser's password, generated at apply time and written once to the
+      secret store. The plan names where it is, never what it is (ADR-0007).

@@ -1,0 +1,18 @@
+---
+# The first real engine. Every value in this directory that the estate has not yet settled
+# is an upstream default rather than an invention, and docs/dev/STATUS.md lists which is
+# which. A threshold nobody will defend in a review is worse than no threshold, so none of
+# these is presented as policy until somebody makes it one.
+engine: postgresql
+display_name: PostgreSQL
+profile_version: "0.1.0"
+summary: >-
+  PostgreSQL from the PGDG repositories, on the Debian family, laid out where the upstream
+  packaging puts it rather than somewhere of our own choosing.
+os_families:
+  - debian
+defaults:
+  port: 5432
+  instance: main
+  locale: en_US.UTF-8
+documentation: https://www.postgresql.org/docs/16/runtime-config.html

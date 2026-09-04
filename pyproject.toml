@@ -63,6 +63,10 @@ packages = ["basewright"]
 # a profile without needing a checkout beside it.
 [tool.hatch.build.targets.wheel.force-include]
 "schema" = "basewright/_schema"
+# The profiles too, for the same reason and with one more: --engine looks an engine up by
+# name, and an installed Basewright that could not find one would make that flag a thing
+# only a checkout has.
+"profiles" = "basewright/_profiles"
 
 [tool.hatch.build.targets.sdist]
 include = ["basewright", "profiles", "schema", "ansible", "test", "docs", "README.md", "LICENSE"]

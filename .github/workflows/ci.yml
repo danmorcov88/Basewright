@@ -102,8 +102,9 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev]"
 
-      # Every profile that lands in the repository has to load. There are none yet, and
-      # the command says so out loud rather than passing quietly over an empty directory.
+      # Every profile that lands in the repository has to load. The command refuses an
+      # empty directory rather than passing quietly over one, which is what it did for the
+      # eight sessions before there was anything in there.
       - name: Every profile in the repository validates
         run: python -m basewright.profiles --all profiles
 

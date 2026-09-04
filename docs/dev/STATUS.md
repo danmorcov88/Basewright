@@ -37,6 +37,7 @@ Last reviewed: 2026-09-04.
 | The twenty shared rules of the brief              | done        |
 | Refusal report, and the preflight contract        | done        |
 | `plan`, from a facts document                     | done        |
+| An engine profile, and `--engine` to name it      | done        |
 | Planner: sizing evaluation, layout, plan assembly | done        |
 | The plan contract, frozen                         | done        |
 | Golden plan fixtures, and the refusals beside them | done       |
@@ -131,27 +132,62 @@ for them to check:
   commands that produced its pictures, which is as much as can be asserted while there is
   no engine to provision. The rest waits for a working end-to-end path.
 
-## Placeholder values
+## The first profile, and the seven values it had to assume
 
-Nothing here is settled. Each of the following will ship as a defensible upstream default in
-`profiles/`, clearly marked, until the real convention arrives from the estate. They are
-listed because a reader is entitled to know which numbers were chosen and which were
-inherited.
+`profiles/postgresql/` ships. It is the first thing in this repository that describes a real
+engine, and eight declarative files is all of it: nothing under `basewright/` knows the word
+PostgreSQL, and a test scans every line to keep that true.
 
-| Input                                | Current state                                     |
-| ------------------------------------ | ------------------------------------------------- |
-| Path conventions: data, WAL, log, backup | placeholder, upstream-flavoured defaults      |
-| Service account name, uid policy, shell  | placeholder                                   |
-| Locale and encoding for `initdb`         | placeholder                                   |
-| Default host-based authentication rules  | placeholder                                   |
-| Minimum cores, RAM and free space per path | placeholder — `minimums` in `requirements.yml`, and `min_free` per path |
-| Preferred filesystems, huge pages, swappiness | placeholder — `preferences` in `requirements.yml` |
-| What counts as a conflicting installation | placeholder — `conflicts` in `requirements.yml` |
-| OS families in the estate                | assumed: Debian/Ubuntu first, then RHEL/Rocky  |
-| Port convention                          | placeholder — engine default, single instance |
+§21 of the brief names seven pieces of information that cannot be invented and have to come
+from the team, and none of them has arrived. It also says what to do in the meantime: ship
+reasonable upstream defaults, keep them in `profiles/`, and mark them here. That is what the
+table below is. **Every row is an assumption, not a policy**, and every one of them is a
+single value in a reviewable YAML file with the argument for it written beside it.
 
-A block threshold has to be a number someone will defend in a review. Until these are
-confirmed, they are documented as assumptions rather than presented as policy.
+| §21 | What it needs | What ships, and why that |
+| --- | ------------- | ------------------------ |
+| 1 | Path conventions | The upstream Debian layout, exactly: `/var/lib/postgresql/<version>/<cluster>`, the log under `/var/log/postgresql`. Not a tidier scheme of our own, so that `pg_lsclusters` and the packaged logrotate keep working and a DBA finds things where every other cluster keeps them. |
+| 2 | Service account | `postgres`, group `postgres`, home `/var/lib/postgresql`, shell `/bin/bash`. **Not created by Basewright**: the vendor package makes it, and an account made first would take whatever uid was free rather than the one the package's files are owned by. |
+| 3 | Locale and encoding | `en_US.UTF-8`. The most common estate standard, and the one thing here a European estate is most likely to change. |
+| 4 | Authentication rules | Loopback only, `scram-sha-256` everywhere, `peer` for the service account over the local socket, and no rule anywhere that grants access without a password. A new instance is reachable only from the machine it runs on; widening it is a decision somebody makes on purpose. |
+| 5 | Minimum resources | 2 cores, 2 GB, and per path: data 20 GB, wal 10 GB, log 2 GB, backup 50 GB. **These are blocks with no run-time override.** They are floors rather than recommendations: a real production server clears all of them without noticing, and they exist to catch a request pointed at a machine nobody meant to provision. |
+| 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. RHEL is Phase B, and declaring it before it is tested would be a claim rather than a fact. |
+| 7 | Port convention | 5432, one instance per host. A per-instance allocation scheme would change `defaults.port` and nothing else. |
+
+Two of those deserve a second look before anybody relies on them.
+
+**The backup path is deliberately not `/var/backups`.** That is where the distribution keeps
+a few kilobytes of dpkg state, and it lands on the root filesystem of every machine, so a
+50 GB floor there would refuse almost every host for the wrong reason. The default is
+`/backup/postgresql/<instance>` — a mount somebody provisioned on purpose — and a host that
+has not got one is refused rather than quietly given the root filesystem. What the estate
+actually calls that mount is the open question; that it is a mount is the assertion.
+
+**The write-ahead log defaults to the upstream location inside the data directory**, so on
+any host without a path override the profile warns that the two share a mount. That warning
+is true, it is about the default rather than about the host, and acknowledging it is the
+record that somebody looked. If the estate's convention gives the log its own mount, one
+line in `layout.yml` changes and the warning stops.
+
+### What the profile still cannot answer
+
+- **`reachable_repositories` is now collectable and still is not collected.** Which
+  repositories to try comes from the profile — for this one, `apt.postgresql.org` — and the
+  gather role does not read the profile. Wiring it is the last piece of A1, and until then
+  `repo.reachable` skips and says so rather than assuming a host can reach the internet.
+- **`random_page_cost` and `effective_io_concurrency` read whether the data path is
+  rotational, and a sizing rule that reads an unreported fact refuses the plan.** A host
+  whose storage type nobody could determine — device mapper, some NVMe layouts — therefore
+  gets no plan at all rather than a plan with a guess in it. That is the documented trade
+  and it is the one most likely to be argued with on a real estate: the alternative is a
+  parameter quietly omitted, and PostgreSQL's own default of 4.0 is the wrong answer on
+  every SSD.
+- **The support matrix names three versions and their end-of-life dates.** They are
+  upstream's published dates and they need re-reading whenever a release lands; a test
+  fails the build if any of them has passed.
+- **The templates are written and nothing consumes them yet.** `apply` is A3. They are here
+  because the loader requires every named template to exist, and because writing them after
+  seeing what apply happened to do would not be a specification.
 
 ## Known gaps
 
@@ -169,14 +205,17 @@ confirmed, they are documented as assumptions rather than presented as policy.
 - `host.reachable` checks that the facts describe the host the request names. That a
   machine answered at all is settled by there being a document to read; what nobody notices
   going wrong is a plan built from another machine's facts, so that is what the rule checks.
-- No engine profile exists. `profiles/` is empty, so the schema job in CI walks it and
-  says so rather than passing quietly. What exercises the schema today is a fixture
-  profile for a fictional engine, under `test/fixtures/profiles/`, which is deliberately
-  not parked in `profiles/` where it would make this page read better than it should.
+- **One engine profile ships, and the fictional one stays.** `profiles/postgresql/` is
+  real and `test/fixtures/profiles/exampledb/` is not, and both are put through the whole
+  pipeline against the same five fixture hosts. The fictional one exercises the schema and
+  the loader without implying anything about anybody's production database -- including the
+  paths a real profile cannot use, and the two profiles it deliberately gets wrong. Keeping
+  it is what stops the checks from only ever asking the questions one real engine happens
+  to raise.
 - `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
   step, built in Phase A, and its schema is expected to gain detail there.
-- **The plan contract is frozen.** `plan` produces artifacts, five of them are committed
-  under `test/golden/`, and every change to `plan.json` from here is a version of the
+- **The plan contract is frozen.** `plan` produces artifacts, fourteen of them are
+  committed under `test/golden/`, nested by engine, and every change to `plan.json` from here is a version of the
   contract rather than a patch. What it gained on the way in: `parameters` carry a
   canonical value, a unit and a display rather than one rendered string (ADR-0016);
   `packages`, `configuration` and `tunables` are first-class sections, so apply can

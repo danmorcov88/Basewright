@@ -1,0 +1,74 @@
+PREFLIGHT  db-rocky.invalid -- postgresql 16, instance main
+  16 pass -- 5 warn -- 2 block -- 2 skipped
+
+  BLOCK disk.free_space           backup needs 50GB and / has 44.0 GiB free
+                                  -> Free the space, grow the filesystem, or point the
+                                     path at a mount that has it. Provisioning onto a
+                                     filesystem that is already short is how an instance
+                                     fills its own disk during the first week.
+
+  BLOCK os.supported              rocky 9.4 is not supported by PostgreSQL 16; it
+                                  supports ubuntu 22.04, ubuntu 24.04, debian 12
+                                  -> Provision this instance on a supported operating
+                                     system, or choose a version of the engine that
+                                     supports this one. The support matrix is where an
+                                     unsupported combination is argued about, and it is
+                                     in the profile where a reviewer sees it.
+
+  WARN  disk.separate_mounts      log and data both live on /var; wal and data both live
+                                  on /var
+                                  -> Give them separate filesystems if the workload
+                                     warrants it. Sharing costs failure isolation and
+                                     makes one path able to fill the other; it is
+                                     supported, and this is the record that it was
+                                     chosen rather than overlooked.
+
+  WARN  firewall.state            firewalld is active and does not admit 5432
+                                  -> Open 5432 to the clients that need it once the
+                                     instance is running. Basewright does not change a
+                                     firewall: what may reach a database is a decision
+                                     about the network, and it is not this tool's to
+                                     make.
+
+  WARN  os.swappiness             vm.swappiness is 30, and this profile prefers at most
+                                  10
+                                  -> Set vm.swappiness to 10 or below, persistently. A
+                                     database that has been swapped out answers queries
+                                     at the speed of the disk it was swapped to.
+
+  WARN  os.thp                    transparent huge pages are always; this profile
+                                  prefers madvise, never
+                                  -> Set them to madvise or never persistently, in the
+                                     boot configuration rather than only at run time. A
+                                     setting that reverts on the next reboot is a
+                                     problem that comes back at the worst moment.
+
+  WARN  postgresql.wal.separate_spindle
+                                  path.wal.mount != path.data.mount does not hold on
+                                  this host
+                                  -> Give the write-ahead log its own mount with a path
+                                     override. Every committed transaction is a
+                                     sequential write here and every checkpoint is a
+                                     burst of random writes to the data directory; on
+                                     one spindle they take turns, and the commit latency
+                                     is what shows it. On solid state storage this
+                                     matters much less and is still worth knowing.
+
+  SKIP  postgresql.storage.rotational
+                                  whether this applies depends on path.data.rotational,
+                                  which was not reported
+                                  -> Move the data directory to solid state storage if
+                                     this instance is latency sensitive. Rotational
+                                     storage is supported and is sized for -- the
+                                     planner costs random reads differently on it -- but
+                                     it is not the assumption the defaults below are
+                                     written against.
+
+  SKIP  repo.reachable            this profile installs from the repositories the host
+                                  already has
+                                  -> Nothing to reach: no vendor repository is declared
+                                     for this operating system family, so there is no
+                                     third party for the host to depend on.
+
+REFUSED  2 rules block this host. No plan was produced, and there is no flag that
+         produces one.

@@ -20,7 +20,7 @@ from basewright.planner.schema import plan_problems
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from render_goldens import FIXTURES, GOLDEN, build  # noqa: E402
+from render_goldens import FIXTURES, GOLDEN, PROFILES, TAMPERED_FROM, build  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -28,13 +28,19 @@ def goldens() -> dict[Path, str]:
     return build()
 
 
-def under(goldens: dict[Path, str], directory: str) -> set[str]:
-    """The names written into one of the golden directories.
+#: The engines whose answers are committed. Two of them now, which is the point of the
+#: arrangement rather than an accident of it: the same fixture hosts go through a fictional
+#: engine and a real one, and every check below is made once per engine.
+ENGINES: tuple[str, ...] = tuple(engine for engine, _ in PROFILES)
+
+
+def under(goldens: dict[Path, str], engine: str, directory: str) -> set[str]:
+    """The names written into one of the golden directories, for one engine.
 
     The renderer also writes one file outside them -- a plan that is wrong on purpose --
     so a check that means "the goldens" has to say which ones it means.
     """
-    return {path.stem for path in goldens if path.parent == GOLDEN / directory}
+    return {path.stem for path in goldens if path.parent == GOLDEN / engine / directory}
 
 
 def test_the_committed_goldens_are_what_the_pipeline_produces(goldens: dict[Path, str]) -> None:
@@ -53,11 +59,20 @@ def test_nothing_is_committed_that_no_fixture_produces() -> None:
     produced = {path for path in build() if GOLDEN in path.parents}
     committed = {
         path
+        for engine in ENGINES
         for directory in ("plan", "rendered", "refused")
-        for path in (GOLDEN / directory).glob("*")
+        for path in (GOLDEN / engine / directory).glob("*")
     }
 
     assert committed == produced
+
+
+def test_every_engine_that_ships_has_its_answers_committed() -> None:
+    """A profile added to profiles/ and not to the goldens is a set of tuning decisions
+    nobody reviews the diff of, which is the whole mechanism."""
+    committed = {path.name for path in GOLDEN.iterdir() if path.is_dir()}
+
+    assert committed == set(ENGINES)
 
 
 def test_two_runs_of_the_same_inputs_are_identical(goldens: dict[Path, str]) -> None:
@@ -65,19 +80,33 @@ def test_two_runs_of_the_same_inputs_are_identical(goldens: dict[Path, str]) -> 
     assert build() == goldens
 
 
-def test_every_fixture_host_is_accounted_for(goldens: dict[Path, str]) -> None:
+@pytest.mark.parametrize("engine", ENGINES)
+def test_every_fixture_host_is_accounted_for(goldens: dict[Path, str], engine: str) -> None:
     """A host that quietly stopped being planned would leave the suite passing."""
-    names = under(goldens, "plan") | under(goldens, "refused")
+    names = under(goldens, engine, "plan") | under(goldens, engine, "refused")
 
     assert names == set(FIXTURES)
 
 
-def test_every_plan_that_was_produced_was_also_rendered(goldens: dict[Path, str]) -> None:
+@pytest.mark.parametrize("engine", ENGINES)
+def test_every_plan_that_was_produced_was_also_rendered(
+    goldens: dict[Path, str], engine: str
+) -> None:
     """The rendering is what a person reads, so it is reviewed by diff like the plan is."""
-    planned = under(goldens, "plan")
+    planned = under(goldens, engine, "plan")
 
-    assert planned == under(goldens, "rendered")
+    assert planned == under(goldens, engine, "rendered")
     assert planned
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_each_engine_refuses_a_host_and_plans_another(
+    goldens: dict[Path, str], engine: str
+) -> None:
+    """A profile that plans every fixture is one whose gates are not doing anything, and a
+    profile that refuses every fixture is one nobody could demonstrate."""
+    assert under(goldens, engine, "plan")
+    assert under(goldens, engine, "refused")
 
 
 def test_every_golden_plan_validates_against_the_contract(goldens: dict[Path, str]) -> None:
@@ -106,7 +135,7 @@ def test_the_tampered_fixture_is_a_plan_that_lies_about_its_name(
     notice."""
     edited = next(path for path in goldens if path.name == "edited.json")
     document = json.loads(goldens[edited])
-    original = json.loads(goldens[GOLDEN / "plan" / "typical.json"])
+    original = json.loads(goldens[TAMPERED_FROM])
 
     assert GOLDEN not in edited.parents, "a plan that is wrong on purpose is not a golden"
     assert document["plan_id"] == original["plan_id"]

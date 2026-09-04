@@ -50,7 +50,20 @@ from basewright.request import resolve_request  # noqa: E402
 GOLDEN = ROOT / "test" / "golden"
 HOSTS = ROOT / "test" / "fixtures" / "hosts"
 EDITED = ROOT / "test" / "fixtures" / "plan" / "edited.json"
-PROFILE = ROOT / "test" / "fixtures" / "profiles" / "exampledb"
+
+#: The profiles every fixture host is put through, and the directory each one's answers
+#: are written under. The two do different jobs. The fictional engine exercises the
+#: pipeline and the schema without implying anything about anybody's production database;
+#: the real one is where the tuning decisions live, and its diff is the review.
+#: The plan the tampered fixture is made from. Named rather than taken as whichever
+#: golden happens to sort first, so that adding an engine cannot silently change which
+#: artifact the tamper check is exercised against.
+TAMPERED_FROM = GOLDEN / "exampledb" / "plan" / "typical.json"
+
+PROFILES: tuple[tuple[str, Path], ...] = (
+    ("exampledb", ROOT / "test" / "fixtures" / "profiles" / "exampledb"),
+    ("postgresql", ROOT / "profiles" / "postgresql"),
+)
 
 #: The moment every golden claims to have been generated at, and the date every rule that
 #: reads the calendar is evaluated against. Pinned, so that the only thing a diff can show
@@ -63,21 +76,24 @@ FIXTURES: tuple[str, ...] = ("typical", "large", "rocky", "small", "crowded")
 
 def build() -> dict[Path, str]:
     """Render every golden. Keys are paths relative to the repository root."""
-    profile = load_profile(PROFILE)
     goldens: dict[Path, str] = {}
 
-    for name in FIXTURES:
-        facts = load_facts(HOSTS / f"{name}.json")
-        request = resolve_request(profile, host=facts.host, environment="production")
-        preflight = evaluate(facts, profile, request, today=PINNED.date(), now=PINNED)
+    for engine, directory in PROFILES:
+        profile = load_profile(directory)
+        under = GOLDEN / engine
 
-        if preflight.blocked:
-            goldens[GOLDEN / "refused" / f"{name}.txt"] = render_preflight(preflight) + "\n"
-            continue
+        for name in FIXTURES:
+            facts = load_facts(HOSTS / f"{name}.json")
+            request = resolve_request(profile, host=facts.host, environment="production")
+            preflight = evaluate(facts, profile, request, today=PINNED.date(), now=PINNED)
 
-        plan = build_plan(facts, profile, request, preflight, now=PINNED)
-        goldens[GOLDEN / "plan" / f"{name}.json"] = rendered(plan)
-        goldens[GOLDEN / "rendered" / f"{name}.txt"] = render_plan(plan) + "\n"
+            if preflight.blocked:
+                goldens[under / "refused" / f"{name}.txt"] = render_preflight(preflight) + "\n"
+                continue
+
+            plan = build_plan(facts, profile, request, preflight, now=PINNED)
+            goldens[under / "plan" / f"{name}.json"] = rendered(plan)
+            goldens[under / "rendered" / f"{name}.txt"] = render_plan(plan) + "\n"
 
     goldens[EDITED] = _tampered_with(goldens)
     return goldens
@@ -90,8 +106,7 @@ def _tampered_with(goldens: dict[Path, str]) -> str:
     has been edited has something real to notice. Derived from a plan rather than written
     by hand, because a hand-written copy falls behind the thing it is a copy of.
     """
-    first = next(path for path in goldens if path.parent.name == "plan")
-    plan = json.loads(goldens[first])
+    plan = json.loads(goldens[TAMPERED_FROM])
     parameter = plan["parameters"][0]
     parameter["value"] = parameter["value"] * 2
     parameter["display"] = "somebody edited this"
@@ -118,11 +133,13 @@ def main(argv: list[str] | None = None) -> int:
             for path, content in goldens.items()
             if not path.is_file() or path.read_text(encoding="utf-8") != content
         ]
+        # Every committed artifact, however deep, rather than a list of directory names
+        # that stops being the right list the moment the layout changes -- which is what
+        # happened the first time a second engine was added.
         extra = [
             path
-            for directory in ("plan", "rendered", "refused")
-            for path in sorted((GOLDEN / directory).glob("*"))
-            if path not in goldens
+            for path in sorted(GOLDEN.rglob("*"))
+            if path.is_file() and path.suffix in {".json", ".txt"} and path not in goldens
         ]
         for path in stale:
             print(f"stale: {path.relative_to(ROOT).as_posix()}", file=sys.stderr)

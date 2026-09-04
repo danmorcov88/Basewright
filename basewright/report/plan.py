@@ -183,10 +183,25 @@ def _gate(result: Mapping[str, Any], width: int) -> list[str]:
     indent = " " * margin
 
     observed = wrapped(result.get("observed", result["title"]), width=REPORT_WIDTH - margin)
-    lines = [f"{' ' * _INDENT}{label} {result['id'].ljust(width)}  {observed[0]}"]
+    lines = _row(f"{' ' * _INDENT}{label} ", result["id"], width, observed[0])
     lines.extend(f"{indent}{line}" for line in observed[1:])
     lines.extend(_hanging_note(result.get("remediation", ""), margin))
     return lines
+
+
+def _row(prefix: str, name: str, width: int, rest: str) -> list[str]:
+    """A name in a column, and the rest of the line beside it.
+
+    A name wider than its column takes a line of its own, and the row continues underneath
+    it. The columns are clamped so that one long name cannot push everything else off the
+    right-hand edge -- and the first profile with a thirty-two character parameter name in
+    it found the half of that which had not been thought through: without this the value
+    and the rule that produced it landed wherever the name happened to end, so the one
+    column a reader scans down stopped being a column.
+    """
+    if len(name) <= width:
+        return [f"{prefix}{name.ljust(width)}  {rest}".rstrip()]
+    return [f"{prefix}{name}", f"{' ' * len(prefix)}{' ' * width}  {rest}".rstrip()]
 
 
 # -------------------------------------------------------------------------- parameters
@@ -212,11 +227,8 @@ def _parameters(document: Mapping[str, Any]) -> list[str]:
 
     lines = ["PARAMETERS"]
     for entry in parameters:
-        head = (
-            f"{' ' * _INDENT}{entry['parameter'].ljust(name_width)}  "
-            f"{entry['display'].ljust(value_width)}  {entry['rule'].ljust(rule_width)}"
-        )
-        lines.append(head.rstrip())
+        rest = f"{entry['display'].ljust(value_width)}  {entry['rule'].ljust(rule_width)}"
+        lines.extend(_row(" " * _INDENT, entry["parameter"], name_width, rest))
         lines.extend(
             f"{' ' * (_INDENT + 2)}{line}"
             for line in wrapped(_annotation(entry), width=REPORT_WIDTH - _INDENT - 2)
