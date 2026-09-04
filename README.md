@@ -153,17 +153,14 @@ real value, from the rule that produced it to the line it occupies in a plan:
 
 ## Quickstart
 
-**Not the whole loop yet, and it says so rather than pretending.** Four of the five verbs
-work: a bare container is read, gated, planned for and provisioned, and CI proves that on
-every pull request. `verify` is the one that is not written, so the loop does not close —
-nothing yet reads the running instance back and proves it is what the plan promised. What
-follows is every step that works, run against documents committed under `test/`, which is
-what makes each command below copy-pasteable and each picture reproducible.
+**The whole loop, and CI runs it on every pull request.** A bare `ubuntu:24.04` container is
+read, gated, planned for, provisioned from its own plan, provisioned again with nothing left
+to do, and then asked whether it is what the plan promised.
 
-Every command below is copy-pasteable after `make install`, and every one of them is the
-command that produced the picture underneath it: `tools/render_assets.py` runs them to make
-the images, and a test holds the text in this file against the commands it ran. Neither can
-drift from the other.
+Every command below is copy-pasteable after `make install`, runs against documents committed
+under `test/`, and is the command that produced the picture underneath it:
+`tools/render_assets.py` runs them to make the images, and a test holds the text in this file
+against the commands it ran. Neither can drift from the other.
 
 `gather` reads what a host reported and normalizes it into the model every rule is written
 against:
@@ -290,20 +287,6 @@ basewright plan --from test/fixtures/plan/edited.json
        src="docs/assets/plan-edited-light.svg" width="700">
 </picture>
 
-`verify` is still a promise, and says so rather than hanging or pretending. It reads a live
-instance and compares it to the plan it came from, which needs a machine to reach — Ansible's
-half of the split, and Phase A:
-
-```
-basewright verify
-```
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-verify-dark.svg">
-  <img alt="basewright verify reporting that it is not built yet, and exiting 69"
-       src="docs/assets/cli-verify-light.svg" width="700">
-</picture>
-
 `apply` is not a verb of this CLI at all, and never will be: applying is Ansible's job, and
 the plan is the boundary between them. It is a playbook, and it takes one input:
 
@@ -331,11 +314,84 @@ rather than a thing anybody predicted.
 Applying is proved in CI rather than pictured, because a package version and a moment are
 not things a byte-for-byte image can carry. `molecule test -s apply` takes a bare Ubuntu
 container, reads it, plans for it, applies the plan, applies it again and finds nothing to
-do, and then asks the running instance whether it is what the plan promised — down to the
-encoding and the locale it was created with, which are the two things that cannot be changed
-afterwards.
+do — and then runs the verb below against it.
 
-Four verbs exist as an interface already:
+`verify` closes the loop. It is a playbook too, and for the same reason: reading a live
+instance runs over SSH, so an engine's role asks the instance eleven questions and writes
+down what it said, and the CLI compares that with the plan
+([ADR-0024](docs/adr/0024-the-role-observes-and-the-core-judges.md)):
+
+```
+ansible-playbook ansible/playbooks/verify.yml -l db-01.example.invalid -e basewright_plan_file=plan.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/verify-loop-dark.svg">
+  <img alt="Semaphore runs the playbook, an engine's role reads the instance and writes observation.json, and the CLI judges that against the plan"
+       src="docs/assets/verify-loop-light.svg" width="940">
+</picture>
+
+The document that role writes is an artifact like the plan is, so judging it is a step of
+its own that reaches nothing. The reading below came off a container this repository's test
+run really provisioned, committed as it came back:
+
+```
+basewright verify --plan test/fixtures/plan/applied.json --observed test/fixtures/observations/observed.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cli-verify-dark.svg">
+  <img alt="basewright verify proving that a running instance is what its plan promised"
+       src="docs/assets/cli-verify-light.svg" width="880">
+</picture>
+
+A verify that only ever passes has not been shown to be looking. So the scenario changes a
+parameter on the running instance behind the plan's back and insists the tool goes red —
+and this is that report, from the reading taken after the change:
+
+```
+basewright verify --plan test/fixtures/plan/applied.json --observed test/fixtures/observations/changed.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/verify-refused-dark.svg">
+  <img alt="basewright verify refusing an instance whose parameters no longer match its plan"
+       src="docs/assets/verify-refused-light.svg" width="880">
+</picture>
+
+Every check reports one of three things, and the third is the one worth spelling out. A
+check nobody managed to put to the instance is **not** a pass: it is reported as its own
+outcome, and the run does not verify the instance
+([ADR-0025](docs/adr/0025-a-check-nobody-could-run-is-not-a-pass.md)). A run that proved
+nothing and exited zero would be the failure this whole tool exists to end, moved one step
+later.
+
+| Kind | What it reads back |
+| ---- | ------------------ |
+| `service` | The unit the plan named is active, and enabled so it survives a reboot |
+| `port` | The instance is on the planned port and on no other |
+| `connection` | An authenticated connection is accepted |
+| `version` | The running server is the major version the plan asked for |
+| `parameters` | Every sized parameter reads back with the planned value |
+| `paths` | The instance stores its data and its write-ahead log where the plan put them |
+| `log` | There is a log, and it has been written to since the service started |
+| `backup` | The service account can write where the plan puts backups |
+| `auth` | No password-free rule is reachable from off the machine |
+| `account` | Every account that can log in has a password set |
+| `initialization` | The locale, encoding and checksum flag it was **created** with |
+
+The last one is the one that cannot be put right afterwards: those three are fixed when the
+instance is created, and changing any of them means dumping every database in it and
+reloading. The plan states them
+([ADR-0022](docs/adr/0022-the-plan-says-how-the-instance-is-created.md)) and this is what
+reads them back.
+
+A profile can narrow a kind without the core learning anything about the engine. The `port`
+kind judges the port, because the port is what the plan carries; that this instance is bound
+to no address but loopback is `profiles/postgresql/`'s own decision, written as an
+expression in the file where somebody arguing with it would look.
+
+All five verbs exist:
 
 ```
 basewright --help
@@ -347,8 +403,8 @@ basewright --help
        src="docs/assets/cli-help-light.svg" width="620">
 </picture>
 
-This section fills in with the real console output of each step as the roadmap closes. It
-cannot fall behind: `tools/render_assets.py --check` regenerates every image in CI and fails
+Every image above is the real console output of the command printed beside it, and none of
+it can fall behind: `tools/render_assets.py --check` regenerates every one in CI and fails
 the build if what is committed differs by a single byte. Progress is tracked in
 [docs/dev/STATUS.md](docs/dev/STATUS.md).
 
@@ -358,7 +414,7 @@ Semaphore is the interface
 ([ADR-0005](docs/adr/0005-semaphore-is-the-interface.md)), and its view of a run is one bit:
 the task is green or the task is red. So the exit code is not how a failure gets
 reported — the report already does that, in the task log. What the number carries is what
-the person looking at a red task is supposed to do next, and there are four answers worth
+the person looking at a red task is supposed to do next, and there are three answers worth
 telling apart:
 
 | Code | What happened | What to do |
@@ -366,11 +422,10 @@ telling apart:
 | `0` | The tool ran, and the answer is yes. | Go on to the next step. |
 | `2` | The tool ran, and the answer is no. | Read the report: it names the rule, what was found, and the way out. |
 | `64` | The request itself is malformed. | Fix the command. Nothing was decided, so there is no report to read. |
-| `69` | The verb exists and is not built yet. | Nothing yet. docs/dev/STATUS.md says what is built. |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/exit-codes-dark.svg">
-  <img alt="The four exit codes, what produces each one, and what an operator does about it"
+  <img alt="The three exit codes, what produces each one, and what an operator does about it"
        src="docs/assets/exit-codes-light.svg" width="940">
 </picture>
 
@@ -380,10 +435,15 @@ is `2`.** A missing facts document is a mistyped path; one that fails its contra
 answer about a real file. A plan whose id no longer matches its content is `2` for the same
 reason — it is a plan, it is simply not the plan it claims to be.
 
-A blocked gate, an unacceptable document and, when it lands, a verify mismatch are all `2`.
-They differ in what happened, not in what to do about it, and the difference between them
-lives in the report rather than in a number. The set is closed, held by a test in both
-directions, and argued in [ADR-0019](docs/adr/0019-exit-codes-are-the-contract.md).
+A blocked gate, an unacceptable document and a verify mismatch are all `2`. They differ in
+what happened, not in what to do about it, and the difference between them lives in the
+report rather than in a number. The set is closed, held by a test in both directions, and
+argued in [ADR-0019](docs/adr/0019-exit-codes-are-the-contract.md).
+
+There were four. `69` said the verb existed and was not built, ADR-0019 named it as the one
+member with an expiry date, and it went when `verify` landed. A set that loses a member is
+narrower than it was rather than different: nothing that read `0`, `2` or `64` has to
+change, and there is now no invocation of this tool that can produce anything else.
 
 ### What a host is, to a rule
 
@@ -406,18 +466,17 @@ engine name appears in the core.
 
 | Engine        | OS families           | Versions   | Status                       |
 | ------------- | --------------------- | ---------- | ---------------------------- |
-| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | plans and applies    |
+| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | the whole loop       |
 | PostgreSQL    | RHEL / Rocky          | —          | planned                      |
 | MySQL/MariaDB | Debian / Ubuntu       | —          | planned                      |
 | SQL Server    | Windows               | —          | planned                      |
 
 `profiles/postgresql/` is eight declarative files and one template directory. It gates a
-host, sizes seventeen parameters, produces a complete plan, and that plan is applied by
-`ansible/roles/postgresql/` — which is the one directory in this repository where the word
-is allowed to appear. What is left is `verify`: reading the running instance back and
-proving it is what the plan promised, rather than asserting a handful of things about it in
-a test scenario. Nothing under `basewright/` knows the word PostgreSQL, and a test reads
-every line of the core to keep that true.
+host, sizes seventeen parameters, produces a complete plan, applies it through
+`ansible/roles/postgresql/`, and then reads the running instance back and proves it is what
+the plan promised. That role is the one directory in this repository where the word is
+allowed to appear. Nothing under `basewright/` knows it, and a test reads every line of the
+core to keep that true.
 
 The values that had to be assumed rather than confirmed — path conventions, the service
 account, the locale, the authentication rules, the minimums that become blocks — are listed
@@ -473,10 +532,11 @@ basewright/
 │   ├── profiles/                # loader + JSON Schema validation
 │   ├── preflight/               # gate engine, severity resolution
 │   ├── planner/                 # sizing evaluation, layout resolution, plan assembly
+│   ├── verify/                  # judging a reading against the plan it came from
 │   ├── report/                  # human and JSON rendering, shared by plan and verify
 │   └── cli.py                   # thin: basewright gather|preflight|plan|verify
 ├── ansible/                     # Ansible: the part that acts
-│   ├── playbooks/               # preflight.yml, plan.yml, apply.yml, verify.yml
+│   ├── playbooks/               # gather.yml, apply.yml, verify.yml
 │   ├── roles/                   # common, then one thin role per engine
 │   ├── plugins/                 # action/filter plugins bridging to the Python package
 │   └── inventory/example/
@@ -577,26 +637,28 @@ boundaries that keep the scope finishable —
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete   |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | in progress |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | complete    |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, plan storage               | not started |
 | **Phase C**    | A second engine, proving the core needed no changes         | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
 | **Phase E**    | Audit trail, plan diff against a live host, signed releases | not started |
 
-Foundation is complete and it closes with `verify` unbuilt, which is worth stating plainly
-rather than leaving to be discovered. Verify reads a live instance and compares it to the
-plan it came from, so it needs an instance to exist — which is the end of Phase A, not the
-start of it. It exists as a verb, it exits `69`, and it says which page to read.
+**Phase A is complete, and the loop closes.** A bare `ubuntu:24.04` container is read,
+gated, planned for, provisioned from its own plan, provisioned again with zero changes, and
+then asked whether it is what the plan promised — and CI does all of that on every pull
+request. Then the scenario changes a parameter on the running instance behind the plan's
+back and insists `verify` goes red, because a verify that only ever passes has not been
+shown to be looking.
 
-Phase A has started with the half of it that needs nothing from anybody: `gather` now reads
-a real host, because collecting facts is engine-independent. Everything after that is
-blocked on information rather than on code. Seven conventions have to come from
-the estate before a first engine profile can ship — path layout, service account, locale,
-authentication rules, the minimum resources a production instance may run on, the OS
-families actually in use, and the port convention. The minimums become block thresholds
-with no override, so they have to be numbers somebody will defend in a review. Until they
-arrive, `profiles/` stays empty and the schema job in CI says so out loud instead of passing
-quietly over an empty directory.
+What that does not mean is that the numbers are settled. Seven conventions have to come
+from the estate — path layout, service account, locale, authentication rules, the minimum
+resources a production instance may run on, the OS families actually in use, and the port
+convention. None has arrived. `profiles/postgresql/` ships reasonable upstream defaults for
+all seven and [docs/dev/STATUS.md](docs/dev/STATUS.md) lists which is which, row by row,
+with the argument for each. **Every one of them is an assumption rather than a policy**,
+and each is a single value in a reviewable YAML file. The minimums in particular become
+block thresholds with no run-time override, so they have to be numbers somebody will defend
+in a review.
 
 Detail, and the placeholder values that still need real numbers from the estate, are in
 [docs/dev/STATUS.md](docs/dev/STATUS.md).

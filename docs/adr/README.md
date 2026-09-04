@@ -42,6 +42,8 @@ on the merits, and supersede when the merits change.
 | [0021](0021-the-collector-is-told-what-is-being-provisioned.md) | The collector is told what is being provisioned, for one fact        |
 | [0022](0022-the-plan-says-how-the-instance-is-created.md)       | The plan says how the instance is created; that made it version two  |
 | [0023](0023-drift-is-measured-against-the-plan.md)              | Drift is measured against the plan, and free space is not part of it |
+| [0024](0024-the-role-observes-and-the-core-judges.md)           | An engine's role observes the instance; the core judges what it read |
+| [0025](0025-a-check-nobody-could-run-is-not-a-pass.md)          | A check nobody could run is not a pass, and it refuses the run       |
 
 ## Reading order
 

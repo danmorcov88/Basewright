@@ -10,6 +10,16 @@ diff is how a change to a tuning decision gets reviewed. `exampledb/` is fiction
 stays because it can be made to do things a real profile must not: it exercises the schema
 and the loader without implying anything about anybody's production database.
 
+`postgresql/verified/` is the other end of the loop, and it is the one directory here whose
+inputs nobody wrote. A plan can be derived from a fixture host; what a running database will
+say cannot be derived from anything, so what is committed is a reading -- taken off the
+container the apply scenario really provisioned, kept as it came back. Two reports are
+written from it: one over the reading, and one over the same reading with a parameter
+widened. Both, because a report that only ever passes has not been shown to be looking, and
+the diff on the failing one is where a change to how a refusal reads shows up.
+
+`exampledb/` has no `verified/`, and could not: there is no fictional server to ask.
+
 ## Why they are here
 
 A sizing rule is a decision about somebody else's production database. The way to review

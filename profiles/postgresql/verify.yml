@@ -1,8 +1,13 @@
 ---
 engine: postgresql
-# What "this instance matches its plan" means for this engine. The verify step is built in
-# Phase A and consumes these; they are written now because deciding what would count as
-# proof after seeing the result is not proof.
+# What "this instance matches its plan" means for this engine. Every check names a kind,
+# the engine's role observes each kind against the running cluster, and the core judges the
+# observation against the plan without ever learning what a cluster is.
+#
+# A title here says what is actually judged rather than what would be nice to judge. Two of
+# them were narrowed when the judgement was written: the plan carries no listen address, so
+# the port kind is about the port and the profile's expression is what adds the address; and
+# no verify step should guess at passwords, so the account kind asks whether one is set.
 checks:
   - id: postgresql.service.running
     kind: service
@@ -14,7 +19,13 @@ checks:
 
   - id: postgresql.port.listening
     kind: port
-    title: Listening on the planned address and port, and only there
+    title: On the planned port, on no other port, and on no address but loopback
+    # The kind judges the port, because the port is what the plan carries. The address is
+    # this profile's decision -- pg_hba grants nothing beyond loopback, and an instance
+    # bound wider than that is reachable from a network nobody decided to expose it to --
+    # so the profile is where it is asked, in the one place a reviewer arguing with it
+    # would look.
+    expr: observed.port.loopback_only
     remediation: >-
       Compare listen_addresses and port in the running configuration against the plan.
       Listening more widely than planned is the finding, not a detail: it is how a
@@ -78,7 +89,18 @@ checks:
 
   - id: postgresql.account.no_defaults
     kind: account
-    title: No role has an empty or default password
+    title: Every role that can log in has a password set
     remediation: >-
-      Set the password from the secret store, or remove the role. A role that anybody can
-      guess their way into makes every other control on this list decorative.
+      Set the password from the secret store, or remove the role's ability to log in. A
+      role that anybody can connect as makes every other control on this list decorative.
+
+  - id: postgresql.initialization.matches
+    kind: initialization
+    title: The cluster was created with the locale and settings the plan named
+    remediation: >-
+      The cluster is not the one the plan describes, and this is the finding on this page
+      that cannot be corrected in place: the encoding, the locale and the checksum setting
+      are fixed when the cluster is created, and changing any of them means dumping every
+      database in it and reloading into a cluster made correctly. Verify says so now
+      rather than leaving it to be discovered by the first name somebody types an accent
+      into.

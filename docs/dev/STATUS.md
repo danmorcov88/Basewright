@@ -10,7 +10,7 @@ Last reviewed: 2026-09-04.
 | Phase          | Contents                                                    | Status      |
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
-| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | A1, A2, A3 done; A4 open |
+| **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | complete    |
 | **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
@@ -23,7 +23,7 @@ Last reviewed: 2026-09-04.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0023           | done        |
+| Architecture decision records 0001–0025           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
@@ -47,20 +47,26 @@ Last reviewed: 2026-09-04.
 | Reading a plan back, and checking it is intact    | done        |
 | Exit codes, as a documented and tested set        | done        |
 | `apply`, and the roles that execute a plan        | done        |
-| `verify`                                          | Phase A     |
+| `verify`, and the role that reads an instance     | done        |
 
-## Foundation closes with a verb that is not built
+## The loop closes
 
-`verify` reads a live instance and compares it to the plan it came from. Reaching a live
-instance runs over SSH or WinRM, which is Ansible's half of the split, so there was no
-version of this that could have been built in Foundation. It is listed as Phase A above
-rather than as not started, because nothing about it is undecided — §10 of the brief says
-what it checks, `verify.yml` is the profile file that carries the assertions, and what is
-missing is a machine to ask.
+Every verb in §4 of the brief is built, and the last of them is the one that makes the other
+four worth anything: `apply` promised something, and `verify` reads the instance back and
+says whether the promise held.
 
-It exists as a verb, it declares no flags, it exits `69`, and it names the page that says
-so. An unbuilt verb declaring flags no implementation will read would be the same class of
-claim as a screenshot of behaviour that does not exist, so its flags arrive with it.
+What CI does on every pull request is the whole of it. A bare `ubuntu:24.04` container is
+read, gated, planned for, provisioned from its own plan, provisioned again with nothing left
+to do, and verified. Then the scenario changes a parameter on the running instance behind
+the plan's back and insists the tool goes red -- exactly `2`, and naming the parameter --
+because a verify that only ever passes has been shown to agree with a correct instance and
+nothing more.
+
+Two things are still true and worth saying in the same breath. **The numbers in the profile
+are upstream defaults rather than the estate's policy**, all seven of them, and the table
+further down says which is which. And **the interface is missing**: `deploy/semaphore/` is
+empty, so the four templates of §12 that would let anybody run any of this without a shell
+are Phase B.
 
 ## Collecting from a live host
 
@@ -238,39 +244,165 @@ else. Both are real gaps rather than oversights, they are named in `UNCHECKED` i
 `basewright/drift.py`, and they are found later and less kindly -- the packaging refuses, or
 the service fails to bind.
 
-### The one job that needs the internet
+### The one job that depends on somebody else's server
 
-Everything else in CI runs offline on purpose. The apply scenario installs from the vendor
-repository, which is what the whole tool is for, so it cannot. That is stated rather than
-discovered: the collecting scenario proves its refusal case against a name reserved by
-RFC 2606 precisely so that only one job depends on reaching anything.
+This page used to say that everything else in CI ran offline. It does not, and the
+correction is worth making rather than quietly softening: **every job needs the network.**
+All eleven install from PyPI, and both molecule scenarios build their target images, which
+means pulling from Docker Hub and installing systemd, python3 and a handful of tools from
+the distribution's own archives. A page claiming otherwise was describing an intention.
+
+What is true, and what the sentence was reaching for, is narrower. **The apply scenario is
+the only job whose subject under test reaches a third party** -- it adds the vendor's
+repository and installs from `apt.postgresql.org`, which is what the whole tool is for. So
+it is the only job that can go red for a reason outside the control of GitHub, PyPI and the
+distribution, all three of which CI already cannot start without.
+
+That is stated rather than discovered, and it is why the collecting scenario proves its
+refusal case against a name reserved by RFC 2606: `packages.example.invalid` resolves
+nowhere on any network, so the case that refuses is free, deterministic, and does not add a
+second job with a dependency on somebody else's uptime.
+
+An apt cache or a local mirror between runs would remove that last dependency and is
+deliberately not there. Adding it means a job that installs from a cache while the product
+installs from a vendor, so the step being proved would no longer be the step that runs --
+and `repo.reachable`, a blocking rule about whether a host can reach its repositories,
+would be verified against something that is not one. An honest dependency is worth more
+than a job that pretends not to have one.
+
+## Verifying an instance
+
+`verify` is a playbook, for the same reason `gather` and `apply` are (ADR-0020). An
+engine's role puts eleven questions to the running instance, writes down what it said, and
+`basewright verify` compares that document with the plan and renders the answer
+([ADR-0024](../adr/0024-the-role-observes-and-the-core-judges.md)). Nothing under
+`basewright/` opens a socket, and nothing under it knows what a cluster is.
+
+What is worth knowing about it:
+
+- **The observation is a document with a closed contract of its own**,
+  `schema/observation.schema.json`. One shape for every engine, and the kinds give it its
+  structure: `observations` is keyed by the eleven kinds a profile's checks may name, and
+  each kind's shape is fixed. A kind missing from it was not observed, and absent is a
+  different answer from empty here exactly as it is in a facts document.
+- **The whole document comes from the engine's role, including the parts a shared role
+  could have produced.** Asking systemd about a unit the plan names needs no engine, and
+  neither does asking the kernel whether the service account can write to the backup path.
+  They stay in the engine's role anyway: apply's split earns its keep because accounts and
+  directories are identical work whichever engine asked, and asking whether a service is
+  running is not -- for one engine it is a systemd unit, for another it could be several,
+  and a shared role deciding which is a shared role that knows one engine from another. The
+  argument, and the alternative, are in ADR-0024.
+- **Engine knowledge is applied before the document is written, never after.** The role
+  reduces a version string to its major part, asks for a byte count in bytes because the
+  plan records one, and marks an authentication method as requiring a password or not --
+  while the method's own name travels through untranslated, so the report names the rule
+  somebody has to go and delete. What is left in the core is comparison.
+- **The role asks its instance for JSON rather than printing something to be parsed.** One
+  statement, one round trip, one object. `gather` parses what a machine printed because
+  there is no alternative there; here there is, and taking it keeps a parser that would
+  have had to know which server it was reading out of the core entirely. The one thing that
+  genuinely is parsed -- the socket table -- has a parser in the core that takes the
+  process name as an argument.
+- **A check nobody could run is not a pass, and it refuses the run**
+  ([ADR-0025](../adr/0025-a-check-nobody-could-run-is-not-a-pass.md)). This is the
+  difference from preflight's `skip` and it is deliberate: preflight decides whether to
+  proceed, and a rule about an uncollected fact is no reason to refuse a host. Verify makes
+  a claim, and an unasked question contributes nothing to it. A cluster that is down
+  produces one failure -- the service -- and seven unobserved, so the root cause stays
+  visible and the verdict reads `UNPROVED` rather than `FAILED`.
+- **A profile can narrow a kind, and can never excuse one.** The check's `expr` is
+  evaluated only on a kind that already passed, so there is no expression a profile can
+  write that turns a mismatch into a pass. The real profile uses it once: the `port` kind
+  judges the port because the port is what the plan carries, and that this instance is
+  bound to no address but loopback is the profile's own decision, written where somebody
+  arguing with it would look.
+- **The scenario's ten hand-written assertions are gone, replaced by a verify run.** They
+  were the scenario checking its own work. Two are left and both are deliberate: that the
+  secret is a 0600 file where the plan said, and that the plan's secret entry has nowhere
+  to put a value. Neither is something a running database could be asked -- one is about
+  the control node and the other about the artifact.
+- **The proof is the failing case.** A verify that only ever passes has been shown to
+  agree with a correct instance and nothing more. So the scenario runs `ALTER SYSTEM` on
+  the live cluster to widen a parameter behind the plan's back, reloads, reads it again,
+  and insists the verb exits **exactly** 2 and names the parameter. `ALTER SYSTEM` rather
+  than an edit to the drop-in on purpose: it is what somebody in a hurry actually does, it
+  survives a reload, and it is read after every configuration file, so it is the exact
+  shape of the drift this exists to catch.
+
+### What a real container taught this one
+
+Two defects, both in the half that had to know the engine, and neither of a shape a fixture
+could have had -- because a fixture is written by somebody who already knows what the answer
+should be.
+
+**A JSON string is not a SQL string literal.** The query that reads the planned parameters
+back builds a list of their names, and the first version quoted them with `to_json` on the
+reasoning that a JSON string is a quoted string. It is, everywhere except SQL, where double
+quotes are an identifier -- so `"shared_buffers"` was a column the query did not have and
+the cluster said so. What is worth recording is not the mistake but the report it produced:
+the connection check failed with the server's own message, seven checks that needed the
+connection came back unobserved, and the verdict named the one thing to fix. The check
+being built was the check that found the bug in it.
+
+**A start policy is a file with eight lines of explanation above it.** This packaging keeps
+the cluster's start policy in `start.conf`, and reading the file and calling it the value
+produced a failure report with the entire comment block quoted inside it -- correctly, since
+the plan says `auto` and a paragraph of explanation is not `auto`. It is the first line that
+is neither blank nor a comment.
+
+### What verify does not prove
+
+Three narrowings, all of them made while writing the judgements, and all of them changes to
+what the profile's titles claim rather than gaps left unsaid.
+
+- **The connection it proves is over the local socket, as the service account.** That is
+  authentication -- by the operating system rather than by a password -- and it proves the
+  instance is serving. It is not a password-authenticated connection over TCP, and proving
+  that means verify reading the secret store, which arrives with the Semaphore templates.
+- **The port kind judges the port and not the address**, because the plan carries no listen
+  address to compare one against. The address is asked by the profile, as an expression, and
+  a profile that did not ask would not have it checked. Putting a planned listen address in
+  the plan would be a contract change and a version with it.
+- **The account kind asks whether a password is set, not whether it is a good one.** §10 of
+  the brief says "no default or empty administrative password", and observing the first half
+  of that means guessing passwords against a live instance. A verification step that attacks
+  the thing it is verifying is a worse idea than the gap it would close.
 
 ## Exit codes
 
-Four, closed, and documented in [ADR-0019](../adr/0019-exit-codes-are-the-contract.md):
-`0` yes, `2` no, `64` the request is malformed, `69` the verb is not built. They are a
-contract with Semaphore, which marks a task red on anything non-zero, so what the number
-carries is what to do next rather than that something failed.
+Three, closed, and documented in [ADR-0019](../adr/0019-exit-codes-are-the-contract.md):
+`0` yes, `2` no, `64` the request is malformed. They are a contract with Semaphore, which
+marks a task red on anything non-zero, so what the number carries is what to do next rather
+than that something failed.
 
 The set lives in `EXIT_CODES` in `basewright/cli.py`. The README table and the diagram are
 rendered from it, and `test/unit/test_cli.py` holds it in both directions: every code is
-reachable from a real invocation, and the CLI returns nothing outside the set. `69` is the
-one member with an expiry date, and it goes when `verify` lands — which narrows the set
-rather than changing it.
+reachable from a real invocation, and the CLI returns nothing outside the set -- including
+an AST scan that refuses a bare `return 2`, because the registry is only a contract while
+every exit runs through a named constant.
 
-## Not yet wired into CI
+**There were four.** `69` said the verb existed and was not built, ADR-0019 named it as the
+one member with an expiry date, and it went when `verify` landed. A set that loses a member
+is narrower than it was rather than different: nothing that read `0`, `2` or `64` has to
+change, and there is now no invocation of this tool that can produce anything else. The
+test that held the list of unbuilt verbs is still there, asserting the list is empty --
+kept, rather than deleted with the list, because it is what would have to stop being true
+for the code to be needed again.
 
-Both molecule scenarios run on every pull request now, and the second takes a bare container
-from nothing to a running instance and then over it again. What is left:
+## What CI proves, and what it does not picture
 
-- Quickstart output assertions. The commands the README shows are held against the commands
-  that produced its pictures, and that is as far as it goes: an apply prints package
-  versions and moments, so it is proved by the scenario in CI rather than by an image. The
-  README says so rather than showing a picture of it.
-- The verify half of the loop. The apply scenario asserts a handful of things about the
-  running instance -- its unit, its version, its parameters, the data directory, encoding
-  and locale it was created with -- which is a scenario checking its own work rather than
-  the product doing it. `verify` is A4 and it is what turns those assertions into a report.
+Both molecule scenarios run on every pull request. The second takes a bare container from
+nothing to a running instance, over it again with nothing to do, verifies it, changes it,
+and verifies it again expecting a refusal.
+
+The one thing that is proved rather than pictured is `apply` itself. A run prints package
+versions and moments, and neither survives a byte-for-byte image check, so there is no
+capture of it and there deliberately never will be -- the scenario in CI is the proof, and
+a diagram generated from the playbook is what the README shows instead. `verify` was held
+to the same test and came out the other way: a report rendered from a committed reading is
+deterministic and ASCII, so it is captured, and the readings it is captured from came off
+the container that scenario provisioned.
 
 ## The first profile, and the seven values it had to assume
 
@@ -332,9 +464,10 @@ line in `layout.yml` changes and the warning stops.
 
 ## Known gaps
 
-- `gather` and `preflight` both read a facts document, and the playbook is what writes one
-  from a live host. `verify` is the verb that still has nothing behind it: it exits 69 and
-  points here.
+- `gather` and `preflight` read a facts document, and `verify` reads a plan and an
+  observation. In every case a playbook is what produced the document and the CLI is what
+  reads it, which is the split rather than a stage of it
+  ([ADR-0020](../adr/0020-the-playbook-is-the-entry-point.md)).
 - **`repo.reachable` reaches a verdict.** It was the last piece of A1 and it is done. The
   rule itself never changed — it was written in session 5 with both outcomes tested, and
   what was missing was a collector willing to ask. `gather.yml` now takes an optional
@@ -352,8 +485,14 @@ line in `layout.yml` changes and the warning stops.
   paths a real profile cannot use, and the two profiles it deliberately gets wrong. Keeping
   it is what stops the checks from only ever asking the questions one real engine happens
   to raise.
-- `verify.yml` is the least settled of the seven profile files. Its consumer is the verify
-  step, built in Phase A, and its schema is expected to gain detail there.
+- **`verify.yml` gained the detail it was expected to gain.** It was the least settled of
+  the profile files, its consumer was built in Phase A, and building it moved three things.
+  The kind enum gained `initialization`, because the plan gained a section carrying the
+  locale, the encoding and the checksum flag in session 11 and nothing read them back --
+  and those three are the only promises on the whole plan that cannot be corrected in
+  place. `expr` is consumed now, and the real profile uses it once. And two titles were
+  narrowing claims rather than descriptions, so they are descriptions; both are under
+  "What verify does not prove" above.
 - **The plan contract is at version two, and the first version of it is why.** Reading
   `plan.json` against what an apply role would actually execute found it complete except
   for creating the instance: the locale lived in `profile.yml` and never reached the plan,
@@ -411,17 +550,21 @@ line in `layout.yml` changes and the warning stops.
 - Facts a blocking rule needs are required by the contract; the ones only a warning reads
   may be absent. A host that does not report them gets that warning skipped, which is a
   reportable outcome rather than a guess.
-- **The quickstart in the README is not a quickstart, and says so in its first line.**
-  There is no engine to provision, so what it walks through is the three verbs that work,
-  against the fixtures under `test/`. Every terminal image it carries is a real capture,
-  including the one of the verb that does not work yet. Each command is shown as
-  copy-pasteable text above the picture it produced, and a test holds the two together, so
-  what a reader copies is what made the image. It becomes a quickstart when Phase A gives
-  it a host and a profile — not before, and it will not pretend otherwise in the meantime.
+- **The quickstart is a quickstart now.** It said in its own first line that it was not
+  one, for four sessions, because there was no engine to provision and no loop to walk
+  through. Both exist. It runs every verb against documents committed under `test/`, every
+  terminal image is a real capture of the command printed above it, and a test holds the
+  two together so what a reader copies is what made the image.
 
-- **`--profile` takes a path, and it is not going away.** `--engine NAME`, looking one up
-  under `profiles/`, is added when the first profile lands, and the two are mutually
-  exclusive. Naming a directory stays how a profile author runs an uncommitted profile and
+  Two of those documents are readings of a container this repository's own test run
+  provisioned, committed as they came back: `test/fixtures/plan/applied.json` is the plan
+  the scenario built and applied, and `test/fixtures/observations/observed.json` is what
+  the instance said afterwards. The same treatment `collected.json` got in session 9, and
+  for the same reason -- a run prints package versions and moments, so the capture is made
+  from a committed reading rather than from a live one.
+
+- **`--profile` takes a path, and it is not going away.** `--engine NAME` looks one up
+  under `profiles/`, and the two are mutually exclusive. Naming a directory stays how a profile author runs an uncommitted profile and
   how every fixture here is driven, so the change is additive and nobody has to plan around
   a removal.
 

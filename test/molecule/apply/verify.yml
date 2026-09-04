@@ -1,123 +1,116 @@
 ---
 # What the scenario is actually for. That apply ran without failing proves very little; the
-# instance being the one the plan described is the whole claim, and it is the claim `verify`
-# will make properly in A4. What is asserted here is what apply itself promised.
-- name: Verify
+# instance being the one the plan described is the whole claim, and `verify` is the thing
+# that makes it. So this runs the verify playbook rather than asserting its way to the same
+# answer: the ten hand-written assertions that used to be here were the scenario checking
+# its own work, and a scenario checking its own work is not a product that verifies.
+#
+# Then it breaks something, and insists the tool goes red. That is the half that matters.
+# A verify that passes proves the checks agree with a correct instance; only a verify that
+# fails on a changed one proves they were looking.
+- name: Verify the instance against the plan it was built from
+  ansible.builtin.import_playbook: ../../../ansible/playbooks/verify.yml
+  vars:
+    basewright_plan_file: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts/plan.json
+    basewright_observation_dir: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/observations
+
+- name: Change the instance, and insist verify says so
   hosts: all
-  gather_facts: false
+  gather_facts: true
 
   vars:
     ephemeral: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
-    plan: "{{ lookup('file', ephemeral ~ '/facts/plan.json') | from_json }}"
+    project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+    plan_path: "{{ ephemeral }}/facts/plan.json"
+    plan: "{{ lookup('file', plan_path) | from_json }}"
+    changed_observation: "{{ ephemeral }}/observations/changed.json"
 
   tasks:
-    - name: The instance is running under the unit the plan named
+    # ALTER SYSTEM rather than editing the drop-in, and deliberately: it is what somebody
+    # in a hurry actually does, it survives a reload, and it is read after every
+    # configuration file -- so it is the exact shape of the drift this check exists to
+    # catch. A plan describes a machine; six months later somebody widens a setting to get
+    # through an afternoon, and nothing says so until this runs.
+    - name: Widen a parameter behind the plan's back
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --port={{ plan.request.port }}
+          - --command=ALTER SYSTEM SET work_mem = '64MB'
+      become: true
+      become_user: "{{ plan.layout.service_account.name }}"
+      changed_when: true
+
+    - name: Make the instance read it
       ansible.builtin.systemd_service:
         name: "{{ plan.packages.service }}"
-      register: unit
-      failed_when: unit.status.ActiveState != 'active'
-      changed_when: false
+        state: reloaded
       become: true
 
-    - name: It answers on the port the plan named, as the account the plan named
-      ansible.builtin.command:
-        argv:
-          - psql
-          - --no-psqlrc
-          - --tuples-only
-          - --no-align
-          - --port={{ plan.request.port }}
-          - --command=SHOW server_version_num
-      become: true
-      become_user: "{{ plan.layout.service_account.name }}"
-      changed_when: false
-      register: version
-
-    - name: It is the version that was requested
-      ansible.builtin.assert:
-        that: version.stdout | int // 10000 == plan.request.version | int
-        fail_msg: >-
-          The running server reports {{ version.stdout }}, and the plan asked for
-          {{ plan.request.version }}. The packages installed are not the ones the plan
-          named, which makes the plan a description of a machine that does not exist.
-
-    - name: Ask the server which settings it has
-      ansible.builtin.command:
-        argv:
-          - psql
-          - --no-psqlrc
-          - --tuples-only
-          - --no-align
-          - --port={{ plan.request.port }}
-          - --command=SELECT name FROM pg_settings
-      become: true
-      become_user: "{{ plan.layout.service_account.name }}"
-      changed_when: false
-      register: settings
-
-
-    - name: The server knows every parameter the plan named
-      ansible.builtin.assert:
-        that: unknown | length == 0
-        fail_msg: >-
-          This build of the server has no setting called {{ unknown | join(', ') }}, so
-          the plan promises values that will never be read. A parameter the server does
-          not have makes the plan a description of a machine that does not exist.
+    - name: Read the instance again
+      ansible.builtin.include_role:
+        name: "{{ plan.profile.engine }}"
+        tasks_from: observe
       vars:
-        unknown: >-
-          {{ plan.parameters | map(attribute='parameter') | difference(settings.stdout_lines) }}
+        basewright_plan: "{{ plan }}"
 
-    - name: The cluster was created where the plan said, and with what the plan said
+    - name: Write down what it says now
+      ansible.builtin.copy:
+        content: >-
+          {{ basewright_observed
+             | basewright_observation(plan, ansible_facts.date_time.iso8601)
+             | to_nice_json(indent=2, sort_keys=True) }}
+        dest: "{{ changed_observation }}"
+        mode: "0640"
+      delegate_to: localhost
+      become: false
+
+    # Exactly 2, not merely non-zero. Two is "the document was read and it is not
+    # acceptable", which is a different answer from "the request was malformed" -- and a
+    # scenario that accepted any failure would pass just as happily if verify had crashed.
+    - name: Verify refuses an instance somebody has changed
       ansible.builtin.command:
-        argv:
-          - psql
-          - --no-psqlrc
-          - --tuples-only
-          - --no-align
-          - --field-separator=|
-          - --port={{ plan.request.port }}
-          - --command=SELECT current_setting('data_directory'),
-            pg_encoding_to_char(encoding), datcollate FROM pg_database WHERE datname =
-            'postgres'
-      become: true
-      become_user: "{{ plan.layout.service_account.name }}"
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli verify
+          --plan {{ plan_path | quote }}
+          --observed {{ changed_observation | quote }}
+        chdir: "{{ project }}"
       changed_when: false
-      register: created
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      register: refused
 
-    - name: It matches the initialization section of the plan it came from
+    - name: Say what it refused, and why
+      ansible.builtin.debug:
+        msg: "{{ refused.stdout_lines + refused.stderr_lines }}"
+
+    - name: It went red, it named the parameter, and it went red for the right reason
       ansible.builtin.assert:
         that:
-          - reported[0] == data_path
-          - reported[1] == (settings_by_name.encoding)
-          - reported[2] == plan.initialization.locale
+          - refused.rc == 2
+          - "'work_mem' in report"
+          - "'FAILED' in report"
         fail_msg: >-
-          The cluster reports {{ reported }}. The plan said {{ data_path }},
-          {{ settings_by_name.encoding }} and {{ plan.initialization.locale }}. These are
-          the three things that cannot be changed afterwards, which is why the plan states
-          them and why this is checked rather than assumed.
+          A parameter on this instance was changed behind the plan's back and verify
+          exited {{ refused.rc }}. This is the check the whole verb exists for: a report
+          that stays green after somebody changes the instance is worse than no report,
+          because the plan then documents a machine that does not exist and nothing says
+          so.
+        success_msg: >-
+          verify refused the changed instance and named work_mem
       vars:
-        reported: "{{ created.stdout.split('|') }}"
-        data_path: >-
-          {{ (plan.layout.paths | selectattr('purpose', 'eq', 'data') | first).path }}
-        settings_by_name: >-
-          {{ dict(plan.initialization.settings | map(attribute='name')
-                  | zip(plan.initialization.settings | map(attribute='value'))) }}
+        report: "{{ refused.stdout + refused.stderr }}"
 
-    - name: Data checksums are on, which cannot be turned on later without downtime
-      ansible.builtin.command:
-        argv:
-          - psql
-          - --no-psqlrc
-          - --tuples-only
-          - --no-align
-          - --port={{ plan.request.port }}
-          - --command=SHOW data_checksums
-      become: true
-      become_user: "{{ plan.layout.service_account.name }}"
-      changed_when: false
-      register: checksums
-      failed_when: checksums.stdout != 'on'
-
+    # Left here rather than turned into a verify check, and this is the whole of what did
+    # not move. Verify judges the instance; these two are about the artifact and about the
+    # control node. The plan having nowhere to put a password is a property of the document
+    # somebody attaches to a change request, and the store being a 0600 file is a property
+    # of the machine the run happened on -- neither is something a running database could
+    # be asked.
     - name: The secret exists where the plan said it would, and nowhere else
       ansible.builtin.stat:
         path: "{{ ephemeral }}/secrets/{{ plan.secrets[0].location }}"
@@ -134,11 +127,3 @@
         fail_msg: >-
           A generated password is written once to the store and named in the plan, never
           carried by it. There is deliberately nowhere in a plan's secret for a value.
-
-    - name: Say what the instance turned out to be
-      ansible.builtin.debug:
-        msg:
-          - "{{ plan.packages.service }} is {{ unit.status.ActiveState }},
-             server_version_num {{ version.stdout }}"
-          - "{{ plan.parameters | length }} parameters read back,
-             created as {{ created.stdout }}"

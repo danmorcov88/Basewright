@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://basewright.dev/schema/observation.schema.json",
+  "title": "What a running instance turned out to be",
+  "description": "The document an engine's role writes after reading the instance it provisioned, and the only thing verify judges a plan against. Reaching a live instance runs over SSH, which is Ansible's half of the split, so the role observes and the core judges: nothing under basewright/ opens a socket (ADR-0020, ADR-0024).\n\nOne shape for every engine, and the kinds give it its structure. `observations` is keyed by the kinds a profile's checks may name, and each kind's value has the shape fixed below, so a core that has never heard of an engine can read an answer it produced. What the role does not put in this document is anything an engine knows: it asks its own instance for values in the plan's own spelling, and there is no engine vocabulary anywhere in the file for the core to have to interpret.\n\nA kind missing from `observations` was not observed. That is neither a pass nor a failure of the instance -- it is the run failing to prove something -- and verify reports it as its own outcome and still refuses (ADR-0025).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "host", "observed_at", "observations"],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "The version of this contract. A consumer refuses a document whose version it does not implement rather than guessing at a field that moved."
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{4,80}$",
+      "description": "The plan this instance was built from. Verify refuses an observation whose plan is not the plan it was given, because comparing one machine's readings against another machine's promises would produce a report that reads as a verdict."
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The host that was read. Checked against the plan for the same reason as the plan id."
+    },
+    "observed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC, to the second. A verify report is read months after the apply it follows, so when the instance was read is part of what the report says."
+    },
+    "tool_version": {
+      "type": "string",
+      "description": "The Basewright that assembled the document, where one is known."
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What was read, by kind. A kind a profile never names may still be present; a kind a profile names and this document lacks is one the run could not observe.",
+      "properties": {
+        "service": { "$ref": "#/$defs/service" },
+        "port": { "$ref": "#/$defs/port" },
+        "connection": { "$ref": "#/$defs/connection" },
+        "version": { "$ref": "#/$defs/version" },
+        "parameters": { "$ref": "#/$defs/parameters" },
+        "paths": { "$ref": "#/$defs/paths" },
+        "log": { "$ref": "#/$defs/log" },
+        "backup": { "$ref": "#/$defs/backup" },
+        "auth": { "$ref": "#/$defs/auth" },
+        "account": { "$ref": "#/$defs/account" },
+        "initialization": { "$ref": "#/$defs/initialization" }
+      }
+    }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "enabled", "active"],
+      "description": "The unit the instance runs under. The name comes from the plan, so a role reads it rather than knowing it.",
+      "properties": {
+        "unit": { "type": "string", "minLength": 1 },
+        "enabled": {
+          "type": "boolean",
+          "description": "Set to come up on boot. An instance that is running and not enabled is one that disappears at the next reboot, which is a finding rather than a detail."
+        },
+        "active": { "type": "boolean" }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bound"],
+      "description": "Every socket the instance itself is listening on. Not every socket on the host: what another service listens on is that service's business, and a conflict on the planned port is a gate that ran before this instance existed.",
+      "properties": {
+        "bound": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["address", "port"],
+            "properties": {
+              "address": { "type": "string", "minLength": 1 },
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            }
+          }
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted"],
+      "description": "Whether an authenticated connection succeeded. This is the one observation that proves the instance is usable rather than merely started.",
+      "properties": {
+        "accepted": { "type": "boolean" },
+        "account": {
+          "type": "string",
+          "description": "Who connected. Reported so the report says which credentials were proved, rather than that some connection somewhere worked."
+        },
+        "detail": {
+          "type": "string",
+          "description": "What the instance said when it refused. Present only on a refusal, and it is what somebody acts on."
+        }
+      }
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reported", "major"],
+      "description": "What the running server says it is, not what the package manager says it installed.",
+      "properties": {
+        "reported": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The full version as the server prints it, kept whole because it is what a reader recognises."
+        },
+        "major": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The part that is comparable with the version the plan requested. Reduced by the role, because which part of a version string is the major one is engine knowledge."
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settings"],
+      "description": "Every parameter the plan names, read back from the running server.",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "description": "Parameter name to the value the server holds, in the plan's own spelling: a plan recording a count of bytes is answered with a count of bytes, and a plan recording a boolean with a boolean. Converting is the role's job, because the units a server prints in are engine knowledge and comparing two spellings of one number is not a judgement anybody should be making in a report.",
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "description": "Parameters the plan names that this build of the server does not have. A value that will never be read is worse than a wrong one, because nothing ever reports it.",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolved"],
+      "description": "Where the instance says its own storage is, purpose by purpose. Asked of the running server rather than stat'ed, because a directory existing at the planned path proves nothing about whether anything is being written into it.",
+      "properties": {
+        "resolved": {
+          "type": "object",
+          "description": "Purpose to the path the instance reports for it. A purpose the instance cannot be asked about is left out rather than filled in from the plan.",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "written_since_start"],
+      "description": "Whether the instance is writing anything down. An instance running and logging nothing is one nobody will be able to diagnose later.",
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "exists": { "type": "boolean" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "written_since_start": {
+          "type": "boolean",
+          "description": "Written to since the service came up, rather than merely present. A log file left behind by a previous instance exists and proves nothing."
+        }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "writable"],
+      "description": "Whether the account the instance runs as can write where the plan puts backups. Asked of the kernel as that account rather than tried, because verify changes nothing -- and asking answers for the mode, the ownership and a read-only mount at once.",
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "writable": { "type": "boolean" },
+        "detail": { "type": "string" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "description": "The authentication rules, normalized by the role into terms the core can judge. What a method is called is engine vocabulary; whether it requires a password is not.",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["method", "local", "password_required"],
+            "properties": {
+              "method": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The engine's own name for it, carried so the report names the rule a reader has to go and remove."
+              },
+              "local": {
+                "type": "boolean",
+                "description": "Reachable only from the machine the instance runs on. The role decides this, because what counts as local is a property of the connection types the engine has."
+              },
+              "address": { "type": "string" },
+              "password_required": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roles"],
+      "description": "The accounts that can log in, and whether each has a password. Deliberately not whether the password is a common one: finding that out means guessing passwords against a production instance, which is not something a verification step gets to do.",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "can_login", "password_set"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "can_login": { "type": "boolean" },
+              "password_set": { "type": "boolean" },
+              "superuser": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "initialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settings"],
+      "description": "What the instance was created with, as opposed to what it was configured with afterwards. These are the values that cannot be changed in place, which is why the plan states them and why they are read back separately from the parameters.",
+      "properties": {
+        "locale": { "type": "string", "minLength": 1 },
+        "settings": {
+          "type": "object",
+          "description": "Setting name to value, in the spelling the plan's initialization section uses.",
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        }
+      }
+    }
+  }
+}
