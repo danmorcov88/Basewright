@@ -4,11 +4,14 @@ The CLI is deliberately thin. It parses arguments, hands them to the library, an
 renders whatever comes back. Every decision it appears to make is made under
 ``basewright/`` and is tested without a terminal.
 
-There is no ``apply`` verb here on purpose: this package decides, Ansible acts.
+There is no ``apply`` verb here on purpose: this package decides, Ansible acts. For the
+same reason ``verify`` does not reach an instance -- it reads two documents, the plan and
+the reading an engine's role took off the running instance, and says whether the second is
+what the first promised (ADR-0020, ADR-0024).
 
 What this module does own is the exit codes. They are a contract with Semaphore, which
 marks a task red on anything non-zero, and they are set out in ``EXIT_CODES`` below and
-in ADR-0019 rather than left as four constants nobody wrote down.
+in ADR-0019 rather than left as three constants nobody wrote down.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from basewright import __version__
 from basewright.facts import FactsError, HostFacts, load_facts
@@ -44,8 +48,17 @@ from basewright.profiles.model import Profile
 from basewright.report.plan import render_plan
 from basewright.report.preflight import render_preflight
 from basewright.report.problems import REPORT_WIDTH, display, render_problems, wrapped
+from basewright.report.verify import render_verify
 from basewright.request import Request, RequestError, resolve_request
 from basewright.units import render_bytes
+from basewright.verify import (
+    InvalidObservationError,
+    ObservationError,
+    VerifyError,
+    load_observation,
+)
+from basewright.verify import document as verification
+from basewright.verify import verify as run_verify
 
 #: Everything went as planned.
 EXIT_OK = 0
@@ -54,8 +67,6 @@ EXIT_OK = 0
 EXIT_REFUSED = 2
 #: The request itself is malformed, or an input could not be read at all.
 EXIT_USAGE = 64
-#: The verb exists but is not built yet. Removed as the roadmap closes.
-EXIT_UNIMPLEMENTED = 69
 
 
 @dataclass(frozen=True)
@@ -74,8 +85,14 @@ class ExitCode:
 #:
 #: Semaphore marks a task red on any non-zero code, so the number is not how a run is
 #: reported as failed -- the report already does that. What the number carries is what
-#: the person reading the red task is meant to do next, and there are four answers worth
+#: the person reading the red task is meant to do next, and there are three answers worth
 #: telling apart.
+#:
+#: There were four. ``69`` said the verb existed and was not built, it was named in
+#: ADR-0019 as the one member with an expiry date, and it went when ``verify`` landed. A
+#: set that loses a member is narrower than it was rather than different: nothing that
+#: read 0, 2 or 64 has to change, and there is now no invocation of this tool that can
+#: produce anything else.
 #:
 #: One line inside that is worth stating out loud, because it is what decides between the
 #: two non-zero answers: **a file that could not be read at all is a usage error, and a
@@ -99,23 +116,13 @@ EXIT_CODES: tuple[ExitCode, ...] = (
         "The request itself is malformed.",
         "Fix the command. Nothing was decided, so there is no report to read.",
     ),
-    ExitCode(
-        EXIT_UNIMPLEMENTED,
-        "The verb exists and is not built yet.",
-        "Nothing yet. docs/dev/STATUS.md says what is built.",
-    ),
 )
-
-#: The verbs that exist as an interface and are not built. Named here rather than in the
-#: two places that need it, so that a verb which starts working cannot go on declaring no
-#: inputs while still exiting 69.
-UNBUILT: frozenset[str] = frozenset({"verify"})
 
 VERBS: dict[str, str] = {
     "gather": "Read and normalize the facts a host reported. Changes nothing.",
     "preflight": "Evaluate the gate rules against the facts and the request.",
     "plan": "Render the intended end state, every value annotated with its rule.",
-    "verify": "Read a live instance back and compare it to the plan it came from.",
+    "verify": "Judge a live instance, as an engine's role read it, against its plan.",
 }
 
 #: Collecting facts from a live host runs over SSH or WinRM, which is Ansible's half of
@@ -136,6 +143,11 @@ _PROFILE_HELP = "Path to a profile directory, for one that is not installed unde
 #: produced it, which is the separation the whole artifact exists for. Retrieval by plan
 #: id needs a plan store and belongs to a later phase; this takes a path.
 _FROM_HELP = "Render a plan that already exists, instead of producing one."
+
+#: What verify compares. Two documents and no host: the plan is the promise, and the
+#: observation is what ansible/playbooks/verify.yml read off the running instance.
+_PLAN_HELP = "Path to the plan the instance was built from."
+_OBSERVED_HELP = "Path to an observation document, written by ansible/playbooks/verify.yml."
 
 #: The environment an instance belongs to. Nothing gates on it yet; the plan records it,
 #: and the strictest of the plausible answers is the safest thing to assume.
@@ -169,11 +181,14 @@ def _add_arguments(parser: argparse.ArgumentParser, verb: str) -> None:
     Semaphore template against it. A flag no implementation will ever read is a promise
     the help page cannot keep.
     """
-    if verb in UNBUILT:
-        # An unbuilt verb declares no inputs. Verify reads a plan and a live instance,
-        # and reaching a live instance runs over SSH or WinRM, which is Ansible's half
-        # of the split -- so its flags arrive with it rather than being guessed at now
-        # and lived with afterwards.
+    if verb == "verify":
+        # Two documents, and both of them are files, because verify judges rather than
+        # reaches: the plan is what was promised and the observation is what an engine's
+        # role read off the running instance (ADR-0024). There is no --host here for the
+        # same reason there is none on any other verb.
+        parser.add_argument("--plan", metavar="PATH", type=Path, help=_PLAN_HELP)
+        parser.add_argument("--observed", metavar="PATH", type=Path, help=_OBSERVED_HELP)
+        _add_json_argument(parser)
         return
 
     parser.add_argument("--facts", metavar="PATH", type=Path, help=_FACTS_HELP)
@@ -181,6 +196,11 @@ def _add_arguments(parser: argparse.ArgumentParser, verb: str) -> None:
         _add_request_arguments(parser)
     if verb == "plan":
         parser.add_argument("--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP)
+    _add_json_argument(parser)
+
+
+def _add_json_argument(parser: argparse.ArgumentParser) -> None:
+    """The document rather than the rendering. Every verb that produces one has it."""
     parser.add_argument(
         "--json",
         dest="as_json",
@@ -246,8 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.verb == "plan":
         return plan(args)
 
-    _refuse(f"basewright {args.verb}: not built yet -- see docs/dev/STATUS.md for the roadmap.")
-    return EXIT_UNIMPLEMENTED
+    return verify(args)
 
 
 def gather(facts: Path | None, *, as_json: bool) -> int:
@@ -363,33 +382,107 @@ def render_existing(args: argparse.Namespace) -> int:
         )
         return EXIT_USAGE
 
+    document = _read_plan(args.from_plan, "plan")
+    if isinstance(document, int):
+        return document
+
+    print(render_plan(document))
+    return EXIT_OK
+
+
+def verify(args: argparse.Namespace) -> int:
+    """Judge a running instance against the plan it came from, and say so loudly.
+
+    The two documents are read the way every other document here is: one that cannot be
+    read at all is a usage error, and one that is read and does not hold up is a refusal.
+    A plan whose id no longer matches its content is refused here exactly as it is by
+    ``plan --from`` and by apply, because a verify report against an edited plan would be
+    a proof that the instance matches something nobody approved.
+    """
+    if args.plan is None or args.observed is None:
+        _refuse(
+            "basewright verify: --plan and --observed are both required. The observation "
+            "is written by ansible/playbooks/verify.yml, which reaches the instance; this "
+            "verb judges what it wrote against the plan the instance was built from."
+        )
+        return EXIT_USAGE
+
+    document = _read_plan(args.plan, "verify")
+    if isinstance(document, int):
+        return document
+
     try:
-        document = json.loads(args.from_plan.read_text(encoding="utf-8"))
+        observation = load_observation(args.observed)
+    except InvalidObservationError as error:
+        print(error.report(), file=sys.stderr)
+        return EXIT_REFUSED
+    except ObservationError as error:
+        _refuse(f"basewright verify: {error}")
+        return EXIT_USAGE
+
+    try:
+        directory = directory_for(document["request"]["engine"])
+        profile = load_profile(directory)
+    except InvalidProfileError as error:
+        print(error.report(), file=sys.stderr)
+        return EXIT_REFUSED
+    except ProfileError as error:
+        _refuse(
+            f"basewright verify: {error} The plan names this engine, so the profile that "
+            f"says what would count as proof for it has to be installed here."
+        )
+        return EXIT_USAGE
+
+    try:
+        result = run_verify(document, profile, observation)
+    except VerifyError as error:
+        _refuse(f"basewright verify: {error}")
+        return EXIT_REFUSED
+
+    if args.as_json:
+        print(json.dumps(verification(result), indent=2, sort_keys=True))
+    else:
+        print(render_verify(result), file=sys.stdout if result.verified else sys.stderr)
+
+    return EXIT_OK if result.verified else EXIT_REFUSED
+
+
+def _read_plan(path: Path, verb: str) -> dict[str, Any] | int:
+    """Read a plan back through its own contract, or say why it was not read.
+
+    The same three questions ``plan --from`` asks, in the same order and the same words:
+    is it readable, does it hold up against the frozen contract, and is it still the plan
+    it calls itself. Shared so that a plan refused by one verb is refused identically by
+    the other -- two spellings of "this plan has been edited" would be two things for
+    somebody to learn.
+    """
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
     except OSError as error:
-        _refuse(f"basewright plan: cannot read {display(args.from_plan)}: {error}")
+        _refuse(f"basewright {verb}: cannot read {display(path)}: {error}")
         return EXIT_USAGE
     except json.JSONDecodeError as error:
-        _refuse(f"basewright plan: {display(args.from_plan)} is not readable JSON: {error}")
+        _refuse(f"basewright {verb}: {display(path)} is not readable JSON: {error}")
         return EXIT_REFUSED
 
     problems = plan_problems(document)
     if problems:
-        print(render_problems(args.from_plan, "plan", problems), file=sys.stderr)
+        print(render_problems(path, "plan", problems), file=sys.stderr)
         return EXIT_REFUSED
 
     claimed = document["plan_id"]
     actual = plan_id_for(content_of(document))
     if claimed != actual:
         _refuse(
-            f"basewright plan: {display(args.from_plan)} calls itself {claimed}, but its "
-            f"content produces {actual}. A plan is named after a digest of what it says, "
-            f"so this one has been edited since it was produced. Produce a fresh plan "
-            f"rather than applying this."
+            f"basewright {verb}: {display(path)} calls itself {claimed}, but its content "
+            f"produces {actual}. A plan is named after a digest of what it says, so this "
+            f"one has been edited since it was produced. Produce a fresh plan rather than "
+            f"applying this."
         )
         return EXIT_REFUSED
 
-    print(render_plan(document))
-    return EXIT_OK
+    read: dict[str, Any] = document
+    return read
 
 
 def _inputs(args: argparse.Namespace, verb: str) -> tuple[HostFacts, Profile, Request] | int:

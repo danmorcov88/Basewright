@@ -1,0 +1,110 @@
+{
+  "engine": "postgresql",
+  "host": "apply-ubuntu2404",
+  "instance": "main",
+  "observed_at": "2026-09-04T13:49:51Z",
+  "plan_id": "a67a746d7850",
+  "result": {
+    "verified": true
+  },
+  "results": [
+    {
+      "expected": "postgresql@16-main is enabled and active",
+      "id": "postgresql.service.running",
+      "kind": "service",
+      "observed": "postgresql@16-main is active, enabled",
+      "outcome": "pass",
+      "title": "The cluster's unit is enabled and active"
+    },
+    {
+      "expected": "port 5432",
+      "expression": "observed.port.loopback_only",
+      "id": "postgresql.port.listening",
+      "kind": "port",
+      "observed": "127.0.0.1:5432, ::1:5432",
+      "outcome": "pass",
+      "title": "On the planned port, on no other port, and on no address but loopback"
+    },
+    {
+      "expected": "an authenticated connection succeeds",
+      "id": "postgresql.connection.accepted",
+      "kind": "connection",
+      "observed": "a connection as postgres was accepted",
+      "outcome": "pass",
+      "title": "An authenticated connection succeeds"
+    },
+    {
+      "expected": "major version 16",
+      "id": "postgresql.version.matches",
+      "kind": "version",
+      "observed": "16.15 (Ubuntu 16.15-1.pgdg24.04+2) (major 16)",
+      "outcome": "pass",
+      "title": "The reported server version is the one that was requested"
+    },
+    {
+      "expected": "17 parameters read back as planned",
+      "id": "postgresql.parameters.match",
+      "kind": "parameters",
+      "observed": "all 17 read back as planned",
+      "outcome": "pass",
+      "title": "Every parameter in the plan reads back with the planned value"
+    },
+    {
+      "expected": "4 paths as the plan places them",
+      "id": "postgresql.paths.match",
+      "kind": "paths",
+      "observed": "2 of 4 paths are where the plan places them; the instance has no notion of backup, log",
+      "outcome": "pass",
+      "title": "The data and the write-ahead log really live where the plan says"
+    },
+    {
+      "expected": "a log that has been written to",
+      "id": "postgresql.log.writing",
+      "kind": "log",
+      "observed": "/var/log/postgresql/postgresql-16-main.log has been written to since start, 2055 bytes",
+      "outcome": "pass",
+      "title": "The log file exists and has grown since the service started"
+    },
+    {
+      "expected": "a writable backup path",
+      "id": "postgresql.backup.writable",
+      "kind": "backup",
+      "observed": "/backup/postgresql/main is writable by the service account",
+      "outcome": "pass",
+      "title": "The service account can write to the backup path"
+    },
+    {
+      "expected": "no password-free rule reachable from off the machine",
+      "id": "postgresql.auth.no_trust",
+      "kind": "auth",
+      "observed": "4 rules, none of them password-free off the machine",
+      "outcome": "pass",
+      "title": "No password-free rule is reachable from a non-local address"
+    },
+    {
+      "expected": "every account that can log in has a password",
+      "id": "postgresql.account.no_defaults",
+      "kind": "account",
+      "observed": "1 account can log in, with a password",
+      "outcome": "pass",
+      "title": "Every role that can log in has a password set"
+    },
+    {
+      "expected": "data_checksums=true, encoding=UTF8, locale=en_US.UTF-8, start_conf=auto",
+      "id": "postgresql.initialization.matches",
+      "kind": "initialization",
+      "observed": "created with data_checksums=true, encoding=UTF8, locale=en_US.UTF-8, start_conf=auto",
+      "outcome": "pass",
+      "title": "The cluster was created with the locale and settings the plan named"
+    }
+  ],
+  "schema_version": "1",
+  "summary": {
+    "fail": 0,
+    "pass": 11,
+    "unobserved": 0
+  },
+  "tool_version": "0.1.0",
+  "verified_at": "2026-01-15T09:30:00Z",
+  "version": "16"
+}

@@ -1,0 +1,118 @@
+{
+  "host": "apply-ubuntu2404",
+  "observations": {
+    "account": {
+      "roles": [
+        {
+          "can_login": true,
+          "name": "postgres",
+          "password_set": true,
+          "superuser": true
+        }
+      ]
+    },
+    "auth": {
+      "rules": [
+        {
+          "address": "",
+          "local": true,
+          "method": "peer",
+          "password_required": false
+        },
+        {
+          "address": "",
+          "local": true,
+          "method": "scram-sha-256",
+          "password_required": true
+        },
+        {
+          "address": "127.0.0.1",
+          "local": true,
+          "method": "scram-sha-256",
+          "password_required": true
+        },
+        {
+          "address": "::1",
+          "local": true,
+          "method": "scram-sha-256",
+          "password_required": true
+        }
+      ]
+    },
+    "backup": {
+      "path": "/backup/postgresql/main",
+      "writable": true
+    },
+    "connection": {
+      "accepted": true,
+      "account": "postgres"
+    },
+    "initialization": {
+      "locale": "en_US.UTF-8",
+      "settings": {
+        "data_checksums": true,
+        "encoding": "UTF8",
+        "start_conf": "auto"
+      }
+    },
+    "log": {
+      "exists": true,
+      "path": "/var/log/postgresql/postgresql-16-main.log",
+      "size_bytes": 2055,
+      "written_since_start": true
+    },
+    "parameters": {
+      "settings": {
+        "autovacuum_max_workers": 3,
+        "checkpoint_completion_target": 0.9,
+        "default_statistics_target": 100,
+        "effective_cache_size": 12348030976,
+        "effective_io_concurrency": 200,
+        "maintenance_work_mem": 1006632960,
+        "max_connections": 100,
+        "max_parallel_maintenance_workers": 3,
+        "max_parallel_workers": 12,
+        "max_parallel_workers_per_gather": 6,
+        "max_wal_size": 4294967296,
+        "max_worker_processes": 12,
+        "min_wal_size": 1073741824,
+        "random_page_cost": 1.1,
+        "shared_buffers": 4026531840,
+        "wal_buffers": 16777216,
+        "work_mem": 13631488
+      },
+      "unknown": []
+    },
+    "paths": {
+      "resolved": {
+        "data": "/var/lib/postgresql/16/main",
+        "wal": "/var/lib/postgresql/16/main/pg_wal"
+      }
+    },
+    "port": {
+      "bound": [
+        {
+          "address": "127.0.0.1",
+          "port": 5432
+        },
+        {
+          "address": "::1",
+          "port": 5432
+        }
+      ]
+    },
+    "service": {
+      "active": true,
+      "enabled": true,
+      "unit": "postgresql@16-main"
+    },
+    "version": {
+      "major": "16",
+      "reported": "16.15 (Ubuntu 16.15-1.pgdg24.04+2)"
+    }
+  },
+  "observed_at": "2026-09-04T13:49:51Z",
+  "plan_id": "a67a746d7850",
+  "schema_version": "1",
+  "tool_version": "0.1.0"
+}

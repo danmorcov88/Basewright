@@ -1,13 +1,20 @@
-"""Apply consumes plan.json and nothing else, asserted against the tasks rather than hoped.
+"""A role reads plan.json and nothing else, asserted against the tasks rather than hoped.
 
 This is the constraint the whole arrangement rests on: the document somebody approved is
 the document that runs. It is also the easiest one to break by accident, because reaching
 into the profile for one more value is always the smaller change than fixing the plan --
 and each time it happens the plan describes a little less of what will happen.
 
-There is exactly one thing apply looks up outside the plan, and it is a file the plan names
-by name rather than a value (ADR-0022). That exception is written down here, so a second
-one has to be argued for rather than added.
+Two names are allowed past it and both are written down below, so that a third has to be
+argued for rather than added: apply resolves a configuration template by the filename the
+plan gives it (ADR-0022), and verify's role hands its reading back to a playbook that
+cannot know the role's name (ADR-0024). The first is a file rather than a value; the
+second is written rather than read.
+
+Verify is covered here as well as apply, because the constraint is the role's rather than
+the verb's. A role that went looking in the profile for one more value would be deciding
+again, and it makes no difference whether it was about to change the machine or about to
+report on one.
 
 The other invariant guarded here is that a task handling a generated password is silent.
 Ansible logs its own arguments by default, so a secret leaks not because somebody printed
@@ -25,16 +32,28 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ROOT / "ansible" / "roles"
-PLAYBOOK = ROOT / "ansible" / "playbooks" / "apply.yml"
+#: The playbooks that enter an engine's role. Both, because a task file reached by neither
+#: is dead, and until verify landed there was only one place it could have been reached
+#: from.
+PLAYBOOKS = (
+    ROOT / "ansible" / "playbooks" / "apply.yml",
+    ROOT / "ansible" / "playbooks" / "verify.yml",
+)
+PLAYBOOK = PLAYBOOKS[0]
 
 #: The roles apply enters. `common` is the shared half; the other is an engine's own, and
 #: it is named here because this file is about what apply does rather than about the core.
 APPLYING_ROLES: tuple[str, ...] = ("common", "postgresql")
 
-#: The one filter that reaches outside the plan, and the whole of the exception. It resolves
-#: a template by the name the plan gives it; every value poured into that template comes
-#: from the plan.
+#: The one filter that reaches outside the plan, and the whole of that exception. It
+#: resolves a template by the name the plan gives it; every value poured into that template
+#: comes from the plan.
 LOOKS_OUTSIDE: str = "basewright_template"
+
+#: The one name a role writes into the play's namespace rather than reads out of the plan.
+#: It is the handover between an engine's role and a playbook shared by every engine, so it
+#: cannot carry the role's prefix without the playbook learning an engine's name.
+HANDS_BACK: str = "basewright_observed"
 
 
 def task_files() -> list[Path]:
@@ -62,7 +81,7 @@ ENGINE = "postgresql"
 def phases_of(playbook: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """Every phase the playbook runs, as the role it enters and the file it enters at."""
     found = []
-    for task in playbook[0].get("tasks", []):
+    for task in playbook[0].get("tasks", []) or []:
         include = task.get("ansible.builtin.include_role")
         if include is None:
             continue
@@ -70,11 +89,16 @@ def phases_of(playbook: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return found
 
 
+def loaded(path: Path) -> list[dict[str, Any]]:
+    """One playbook, as a list of plays."""
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(document, list)
+    return document
+
+
 @pytest.fixture(scope="module")
 def playbook() -> list[dict[str, Any]]:
-    loaded = yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))
-    assert isinstance(loaded, list)
-    return loaded
+    return loaded(PLAYBOOK)
 
 
 def test_there_are_tasks_to_check() -> None:
@@ -106,11 +130,13 @@ def test_the_only_thing_looked_up_outside_the_plan_is_a_template(path: Path) -> 
     """One exception, and it is a file rather than a value: `basewright_template` resolves
     a template by the name the plan gives it, and every value poured into it comes from the
     plan. A second name reaching outside would be an exception nobody argued for."""
-    reaching = set(re.findall(r"basewright_[a-z_.]*", path.read_text(encoding="utf-8")))
+    reaching = set(re.findall(r"basewright_[a-z_.]*", path.read_text(encoding="utf-8")))
     outside = {
         name
         for name in reaching
-        if not name.startswith("basewright_plan") and name != LOOKS_OUTSIDE
+        if not name.startswith("basewright_plan")
+        and not name.startswith(HANDS_BACK)
+        and name != LOOKS_OUTSIDE
     }
 
     assert not outside, f"{path.name} reads {sorted(outside)}, which the plan does not carry"
@@ -159,11 +185,9 @@ def test_the_shared_phases_fall_between_the_engine_phases(
     assert entered.count("common") >= 2, "the shared phases are not one block"
 
 
-def test_every_phase_the_engine_role_has_is_one_the_playbook_runs(
-    playbook: list[dict[str, Any]],
-) -> None:
+def test_every_phase_the_engine_role_has_is_one_a_playbook_runs() -> None:
     """Except the ones another phase includes. A task file nothing reaches is dead."""
-    named = {phase for _, phase in phases_of(playbook)}
+    named = {phase for path in PLAYBOOKS for _, phase in phases_of(loaded(path))}
     included = {
         Path(str(task["ansible.builtin.include_tasks"])).stem
         for path in task_files()

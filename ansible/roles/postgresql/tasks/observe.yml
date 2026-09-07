@@ -1,0 +1,127 @@
+---
+# Reading a running cluster, and turning what it said into the terms the core judges in.
+#
+# This is the half of verify that has to know PostgreSQL, and it is the only half. Nothing
+# here decides whether the instance is acceptable: it puts eleven questions to the cluster
+# and writes down what came back, and `basewright verify` compares that with the plan
+# (ADR-0024).
+#
+# Nothing here changes anything. Every task says so, and the backup path is asked about
+# rather than written to, because a verification that leaves a file behind on the machine
+# it is verifying is not the read-only step the pipeline says it is.
+#
+# Everything is asked over the local socket as the account the plan names, which is
+# authentication by the operating system rather than by a password. What that does not
+# prove is a password-authenticated connection over TCP, and it deliberately stops there:
+# proving that means verify reading the secret store, and the estate's store arrives with
+# the Semaphore templates.
+
+- name: Ask systemd what it makes of the unit the plan named
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ basewright_plan.packages.service }}"
+      - --property=ActiveState
+      - --property=UnitFileState
+  changed_when: false
+  failed_when: false
+  become: true
+  register: postgresql_unit
+
+- name: Read the sockets the host is listening on
+  ansible.builtin.command: ss -H -ltnp
+  changed_when: false
+  become: true
+  register: postgresql_sockets
+
+# One round trip, and everything the server alone can answer comes back in it. Split into
+# eight queries this would be eight chances for one of them to be the reason the report is
+# missing a section; as one it either answers or it does not, and "it did not" is a state
+# the report has an outcome for.
+#
+# Every value comes back in the spelling the plan uses. A byte count is a byte count
+# because the plan records one, a flag is a boolean because the plan records one, and
+# converting them here is the whole reason the core can compare two documents without
+# knowing that this server prints its shared buffer pool in units of eight kilobytes.
+- name: Ask the cluster everything only the cluster can answer
+  ansible.builtin.command:
+    argv:
+      - psql
+      - --no-psqlrc
+      - --tuples-only
+      - --no-align
+      - --port={{ basewright_plan.request.port }}
+      - --dbname=postgres
+      - --command={{ lookup('template', 'observe.sql.j2') }}
+  become: true
+  become_user: "{{ basewright_plan.layout.service_account.name }}"
+  changed_when: false
+  failed_when: false
+  register: postgresql_reading
+
+- name: Keep what the cluster said, or nothing at all if it would not say
+  ansible.builtin.set_fact:
+    # An empty mapping rather than a wrong one. Every section below is drawn from this, so
+    # a cluster that will not answer produces no service-side observation at all -- and the
+    # checks that needed one report that nobody managed to ask rather than that the
+    # instance fell short (ADR-0025).
+    postgresql_said: >-
+      {{ (postgresql_reading.stdout | from_json)
+         if postgresql_reading.rc == 0 and postgresql_reading.stdout | length > 0
+         else {} }}
+
+- name: Find out where the write-ahead log really is
+  # Asked of the filesystem rather than of the server, because the server names its data
+  # directory and the log inside it may be a link to another disk. Resolving the link is
+  # the difference between reporting where the plan put it and reporting where it is.
+  ansible.builtin.command:
+    argv: [readlink, -f, "{{ postgresql_said.data_directory }}/pg_wal"]
+  changed_when: false
+  failed_when: false
+  become: true
+  register: postgresql_wal_resolved
+  when: postgresql_said.data_directory is defined
+
+- name: Look at the log the cluster writes
+  ansible.builtin.stat:
+    path: "{{ postgresql_log_file }}"
+  changed_when: false
+  become: true
+  register: postgresql_log
+
+- name: Ask whether the service account could write where the plan puts backups
+  # `test -w` and not a probe file. It is the kernel's own answer, it accounts for the
+  # mode, the ownership and a read-only mount at once, and it writes nothing.
+  ansible.builtin.command:
+    argv: [test, -w, "{{ postgresql_backup_path }}"]
+  changed_when: false
+  failed_when: false
+  become: true
+  become_user: "{{ basewright_plan.layout.service_account.name }}"
+  register: postgresql_backup
+
+- name: Read the start policy the cluster was created with
+  # Not a server setting: on this packaging it is a file beside the configuration, and it
+  # is what decides whether the cluster comes back after a reboot.
+  ansible.builtin.slurp:
+    src: "{{ postgresql_config_dir }}/start.conf"
+  become: true
+  failed_when: false
+  register: postgresql_start_conf
+
+# The one variable this role sets that does not carry its name, and deliberately so. It is
+# the handover between an engine's role and a playbook shared by every engine, so the
+# playbook cannot know the prefix -- naming it `postgresql_observed` would mean
+# ansible/playbooks/verify.yml mentioning an engine, which is the one thing this
+# architecture does not allow. The linter's rule is about a role leaking a name into the
+# play by accident; this name is the interface.
+- name: Hand over the reading  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    basewright_observed: "{{ postgresql_observations }}"
+
+- name: Say which questions the instance answered
+  ansible.builtin.debug:
+    msg: >-
+      {{ basewright_observed.keys() | list | sort | join(', ') }} read from
+      {{ basewright_plan.packages.service }}

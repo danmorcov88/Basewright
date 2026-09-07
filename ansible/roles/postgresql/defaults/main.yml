@@ -53,3 +53,112 @@ postgresql_create_argv: >-
     + ([] if postgresql_wal_path == postgresql_data_path ~ '/pg_wal'
        else ['--waldir=' ~ postgresql_wal_path])
   }}
+
+# ------------------------------------------------------------------------------- verify
+
+# Where this packaging keeps a cluster's configuration, and the log it writes. Neither is
+# a decision: the first is where pg_createcluster puts it, and the second is the name the
+# wrapper gives the file it redirects the cluster's output into. They are here because
+# reading them back is the only way to prove the cluster is doing what the plan said.
+postgresql_config_dir: >-
+  /etc/postgresql/{{ basewright_plan.request.version }}/{{ basewright_plan.request.instance }}
+postgresql_log_path: >-
+  {{ (basewright_plan.layout.paths | selectattr('purpose', 'eq', 'log') | first).path }}
+postgresql_log_file: >-
+  {{ postgresql_log_path }}/postgresql-{{ basewright_plan.request.version }}-{{
+     basewright_plan.request.instance }}.log
+postgresql_backup_path: >-
+  {{ (basewright_plan.layout.paths | selectattr('purpose', 'eq', 'backup') | first).path }}
+
+# What this engine calls the process that holds its listening sockets. The one thing the
+# socket reading needs that is not in the plan.
+postgresql_process: postgres
+
+# What the cluster turned out to be, kind by kind, in the terms of
+# schema/observation.schema.json. Assembled here rather than in the tasks so that each kind
+# is one expression a reader can check against the schema, and so that a kind nobody
+# managed to read comes out empty -- which is what makes it absent from the document, and
+# absent is what the core reports as nobody having asked.
+#
+# Every section is guarded on the reading it needs. A cluster that would not answer leaves
+# seven of them empty and still reports its unit, its sockets, its log and its backup path,
+# because those were read without asking the cluster anything -- and a report that says the
+# unit is dead and the rest could not be observed is the one somebody can act on.
+postgresql_observations: >-
+  {{
+    {
+      'service': {
+        'unit': basewright_plan.packages.service,
+        'active': postgresql_unit.stdout is search('ActiveState=active'),
+        'enabled': postgresql_unit.stdout is search('UnitFileState=(enabled|static|generated)'),
+      } if postgresql_unit.rc == 0 else {},
+      'port': {
+        'bound': postgresql_sockets.stdout | basewright_sockets(postgresql_process),
+      },
+      'connection': {
+        'accepted': postgresql_reading.rc == 0,
+        'account': basewright_plan.layout.service_account.name,
+      } | combine(
+        {} if postgresql_reading.rc == 0
+        else {'detail': postgresql_reading.stderr | default('') | trim | truncate(200)}
+      ),
+      'version': {
+        'reported': postgresql_said.version_reported | default(''),
+        'major': postgresql_said.version_major | default(''),
+      } if postgresql_said.version_reported is defined else {},
+      'parameters': {
+        'settings': postgresql_said.settings | default({}),
+        'unknown': postgresql_said.unknown | default([]),
+      } if postgresql_said.settings is defined else {},
+      'paths': {
+        'resolved': postgresql_resolved_paths,
+      } if postgresql_resolved_paths else {},
+      'log': {
+        'path': postgresql_log_file,
+        'exists': postgresql_log.stat.exists,
+        'size_bytes': postgresql_log.stat.size | default(0),
+        'written_since_start': postgresql_log.stat.exists
+          and postgresql_said.started_at is defined
+          and postgresql_log.stat.mtime >= postgresql_said.started_at | float,
+      } if postgresql_said.started_at is defined else {},
+      'backup': {
+        'path': postgresql_backup_path,
+        'writable': postgresql_backup.rc == 0,
+      },
+      'auth': {'rules': postgresql_said.auth_rules}
+              if postgresql_said.auth_rules is defined else {},
+      'account': {'roles': postgresql_said.roles}
+                 if postgresql_said.roles is defined else {},
+      'initialization': {
+        'locale': postgresql_said.locale,
+        'settings': {
+          'encoding': postgresql_said.encoding,
+          'data_checksums': postgresql_said.data_checksums,
+          'start_conf': postgresql_start_policy,
+        },
+      } if postgresql_said.locale is defined and postgresql_start_conf.content is defined else {},
+    }
+  }}
+
+# The start policy, out of a file this packaging writes with eight lines of explanation
+# above the one word that is the answer. Reading the whole file and calling it the value is
+# what the first real run did, and the report said so at some length -- correctly, since the
+# plan says `auto` and the file does not equal `auto`. The value is the first line that is
+# neither blank nor a comment.
+postgresql_start_policy: >-
+  {{ (postgresql_start_conf.content | default('') | b64decode).splitlines()
+     | map('trim') | reject('match', '#') | reject('eq', '') | first | default('') }}
+
+# Where the instance says its own storage is. Only the two it is authoritative about: the
+# data directory it was created in, and the write-ahead log resolved through whatever link
+# points at it. The log is included only when the cluster is collecting its own -- when the
+# wrapper is redirecting output instead, the cluster genuinely has no notion of where its
+# log goes, and the check that proves the log is the log kind rather than this one.
+postgresql_resolved_paths: >-
+  {{
+    ({'data': postgresql_said.data_directory} if postgresql_said.data_directory is defined else {})
+    | combine({'wal': postgresql_wal_resolved.stdout | default('') | trim}
+              if postgresql_wal_resolved.stdout | default('') | trim | length > 0 else {})
+    | combine({'log': postgresql_said.log_directory}
+              if postgresql_said.logging_collector | default(false) else {})
+  }}

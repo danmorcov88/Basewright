@@ -5,16 +5,22 @@ has a wrong answer is asked here. There is one function per question, each of th
 wrapper over a module pytest already covers, and the roles that call them stay lists of
 things to do rather than places where a judgement is quietly made in Jinja.
 
-Four questions, and each earns its place by being one a template could get wrong:
+Six questions, and each earns its place by being one a template could get wrong:
 
 * **What did this host turn out to be?** Parsing what a machine printed.
 * **Which repositories should it be asked to reach?** Reading them out of a profile.
 * **Is it still the machine this plan describes?** Deciding which differences matter.
 * **Where is the template this plan names?** Finding a file the plan refers to by name.
+* **What did this instance turn out to be?** Putting the envelope round a reading.
+* **Which sockets is this process holding?** Parsing what ``ss`` printed.
 
-The last one is the only place anything on the applying side reads outside the plan, and
-it reads a template rather than a value. Every value poured into that template comes from
-the plan; what is looked up is the shape it is poured into (ADR-0022).
+The template one is the only place anything on the applying side reads outside the plan,
+and it reads a template rather than a value. Every value poured into that template comes
+from the plan; what is looked up is the shape it is poured into (ADR-0022).
+
+The last two are verify's, and neither knows an engine. The role that calls them does: it
+is the one that read its own instance and turned what it said into the contract's terms,
+and it is the one that knows what its own process is called (ADR-0024).
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from basewright.facts.collect import document
 from basewright.facts.normalize import normalize
 from basewright.facts.repositories import repositories
 from basewright.profiles.locate import template_for
+from basewright.verify.collect import observation, sockets_held
 
 __all__ = ["FILTERS", "drifted", "template"]
 
@@ -62,4 +69,6 @@ FILTERS: Mapping[str, Callable[..., Any]] = {
     "basewright_repositories": repositories,
     "basewright_drift": drifted,
     "basewright_template": template,
+    "basewright_observation": observation,
+    "basewright_sockets": sockets_held,
 }
