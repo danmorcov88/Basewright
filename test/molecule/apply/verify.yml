@@ -8,11 +8,15 @@
 # Then it breaks something, and insists the tool goes red. That is the half that matters.
 # A verify that passes proves the checks agree with a correct instance; only a verify that
 # fails on a changed one proves they were looking.
+# By host and instance name, which is what §12 gives the Verify template and what nobody
+# would be able to do if apply had not written the pointer. Naming the plan here would prove
+# the checks and skip the half of the store that makes them reachable.
 - name: Verify the instance against the plan it was built from
   ansible.builtin.import_playbook: ../../../ansible/playbooks/verify.yml
   vars:
-    basewright_plan_file: >-
-      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts/plan.json
+    basewright_plan_store: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/store
+    basewright_instance: main
     basewright_observation_dir: >-
       {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/observations
 
@@ -23,7 +27,8 @@
   vars:
     ephemeral: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
     project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
-    plan_path: "{{ ephemeral }}/facts/plan.json"
+    plan_id: "{{ lookup('file', ephemeral ~ '/facts/plan_id') | trim }}"
+    plan_path: "{{ ephemeral }}/store/plans/{{ plan_id }}.json"
     plan: "{{ lookup('file', plan_path) | from_json }}"
     changed_observation: "{{ ephemeral }}/observations/changed.json"
 

@@ -418,8 +418,21 @@ checks:
 Apply promises something; these are what proves it. A verify failure is loud, because it
 means the instance is no longer what the documentation claims it is.
 
-This is the least settled of the eight files. Its consumer is the verify step, which is
-built in Phase A, and the schema is expected to gain detail there.
+Every check names a `kind`, and the kinds are a closed enumeration the core knows how to
+judge without knowing which engine answered: `service`, `port`, `connection`, `version`,
+`parameters`, `paths`, `log`, `backup`, `auth`, `account`, `initialization`. Your engine's
+role answers each of them into an observation document, and the core compares that with the
+plan (ADR-0024).
+
+A check may also carry an `expr`, and it narrows the kind rather than replacing it: it is
+evaluated only on a kind that already passed, so there is no expression that turns a
+mismatch into a pass. `profiles/postgresql/` uses one — the port kind judges the port,
+because the port is what the plan carries, and that the instance is bound to no address but
+loopback is that profile's own decision.
+
+A kind your role cannot answer is reported as unobserved, and **an unobserved check refuses
+the run** (ADR-0025). Declaring a kind you cannot observe fails loudly on the first run
+rather than quietly never running.
 
 ## Conventions worth knowing
 

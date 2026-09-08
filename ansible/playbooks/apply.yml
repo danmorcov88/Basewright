@@ -21,12 +21,22 @@
   # an operator to name the host as well would be asking them to repeat something the
   # artifact already carries -- and to be the one who gets it wrong. `basewright_hosts` is
   # still honoured, because somebody running this by hand may have a reason.
+  #
+  # Long, and it has to be here rather than in `vars:`: a play's `hosts:` is resolved before
+  # its vars exist. `errors='ignore'` is load-bearing rather than defensive -- this is
+  # evaluated even when nobody has named a plan at all, by a syntax check for one, and a
+  # playbook that cannot be linted is worse than one that falls back to the pattern matching
+  # everything. Falling back is safe: the first pre_task refuses a run that named no plan,
+  # and the second reads the plan back before any task touches a host.
   hosts: >-
     {{ basewright_hosts | default(
-         (lookup('file', basewright_plan_file | default(
-            basewright_plan_store | default(playbook_dir ~ '/../../plans', true)
-            ~ '/plans/' ~ basewright_plan_id ~ '.json', true))
-          | from_json).request.host, true) }}
+         (lookup('file',
+                 basewright_plan_file | default(
+                   (basewright_plan_store | default(playbook_dir ~ '/../../plans', true))
+                   ~ '/plans/' ~ (basewright_plan_id | default('none', true)) ~ '.json',
+                   true),
+                 errors='ignore')
+          | default('{}', true) | from_json).get('request', {}).get('host', 'all'), true) }}
   gather_facts: true
 
   vars:
@@ -167,6 +177,17 @@
   # that path comes from a name somebody typed into a survey field, so building it is a
   # question with a wrong answer -- and writing a line into a file is not (ADR-0008).
   post_tasks:
+    # `copy` does not make the directory it writes into, and the Python this replaced did.
+    # Found by running it: the apply finished, the instance was correct, and the note that
+    # makes it findable failed on the last task of the play.
+    - name: Make somewhere for the note to land
+      ansible.builtin.file:
+        path: "{{ basewright_plan | basewright_pointer(basewright_plan_store) | dirname }}"
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: false
+
     - name: Note which plan this instance is now running
       ansible.builtin.copy:
         content: "{{ basewright_plan.plan_id }}\n"
