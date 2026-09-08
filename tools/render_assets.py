@@ -636,6 +636,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0005", "Semaphore is the interface"),
             ("0006", "one technical account"),
             ("0007", "secrets stay out of artifacts"),
+            ("0027", "the second store is ansible-vault"),
             ("0019", "exit codes are the contract"),
         ),
     ),

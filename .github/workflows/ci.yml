@@ -219,6 +219,18 @@ jobs:
           ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
           PY_COLORS: "1"
 
+      # Both secret sinks, through the same include an engine role enters. Cheap and
+      # separate on purpose: the store is a control-node concern, so the scenario below
+      # would prove the default one incidentally and would never touch the other. What
+      # this asserts is what the two stores do differently -- one writes the password and
+      # says so, the other writes a vault file and refuses to run without the key.
+      - name: Every store a secret can be written to
+        run: python -m molecule test -s secrets
+        env:
+          MOLECULE_GLOB: test/molecule/*/molecule.yml
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+          PY_COLORS: "1"
+
       # The whole path, against a container that starts bare: read it, plan for it, apply
       # the plan, apply it again, and then ask the instance whether it is what the plan
       # promised. Idempotence is IN this sequence, unlike the one above, because a second

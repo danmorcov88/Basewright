@@ -13,8 +13,8 @@
 # Everything is asked over the local socket as the account the plan names, which is
 # authentication by the operating system rather than by a password. What that does not
 # prove is a password-authenticated connection over TCP, and it deliberately stops there:
-# proving that means verify reading the secret store, and the estate's store arrives with
-# the Semaphore templates.
+# proving that means verify reading a password back out of the store and connecting with it,
+# which widens the set of places one can leak from to check something apply already did.
 
 - name: Ask systemd what it makes of the unit the plan named
   ansible.builtin.command:
