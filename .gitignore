@@ -24,8 +24,13 @@ ansible/inventory/*.local
 # Molecule
 .molecule/
 
-# Runtime artifacts
-plans/
+# Runtime artifacts, written at the repository root by the playbooks. Anchored, all of
+# them: an unanchored `plans/` matches a directory of that name at any depth, and there is
+# one under test/fixtures/ holding a committed store -- so the fixture was silently left out
+# of a commit with nothing saying so. The same mistake `tasks/` made in session 3.
+/facts/
+/observations/
+/plans/
 *.plan.json
 *.verify.json
 

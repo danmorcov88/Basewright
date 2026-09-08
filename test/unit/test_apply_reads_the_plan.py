@@ -255,3 +255,32 @@ def test_the_store_is_a_seam_rather_than_a_detail() -> None:
     defaults = yaml.safe_load((ROLES / "common" / "defaults" / "main.yml").read_text("utf-8"))
 
     assert defaults["common_secret_store"] in defaults["common_secret_stores"]
+
+
+# ------------------------------------------------------- what the local linter keeps missing
+
+
+@pytest.mark.parametrize("path", PLAYBOOKS, ids=lambda path: path.name)
+def test_no_playbook_task_uses_run_once(path: Path) -> None:
+    """`run_once` in a playbook is refused by ansible-lint at the production profile, and
+    rightly: it behaves as an optimisation only under a linear strategy.
+
+    Held here as well because the local linter does not report it. Three sessions running,
+    on the version CI installs, a clean local `ansible-lint` has passed a playbook CI then
+    refused for this one rule -- so this is the check that fails on the machine the code is
+    written on rather than twenty minutes later in a pull request.
+
+    A role's tasks are not covered: the rule does not apply to them, because a role cannot
+    know the strategy of the play that includes it.
+    """
+    body = path.read_text(encoding="utf-8")
+    offending = [
+        number
+        for number, line in enumerate(body.split("\n"), start=1)
+        if line.strip().startswith("run_once:") and not line.strip().startswith("run_once: #")
+    ]
+
+    assert not offending, (
+        f"{path.name} uses run_once at line(s) {offending}. ansible-lint refuses it at the "
+        "production profile and the local run will not tell you."
+    )

@@ -70,7 +70,6 @@
           -e basewright_plan_file=.... An id is what the plan step printed and what the
           Apply template takes; a path is for running this by hand.
         success_msg: applying {{ basewright_plan_path }}
-      run_once: true
       delegate_to: localhost
 
     # Once per host rather than once per run, and the two are the same thing here: a plan is

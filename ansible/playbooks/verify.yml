@@ -55,7 +55,6 @@
           the store which plan this host was applied from. A plan id or a path work too, and
           are what somebody running this by hand usually has.
         success_msg: verifying against {{ basewright_plan_path }}
-      run_once: true
       delegate_to: localhost
 
     # The same check apply makes, in the same words, by the same tool. A plan whose id no
