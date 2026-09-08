@@ -754,7 +754,12 @@ on the status page rather than left to be discovered.
 Permanently out of scope. This list is the reason the tool stays finishable:
 
 - **Creating VMs, networks, storage or DNS.** Basewright starts at a reachable host.
-- **Backup scheduling, verification or restore.** That is a separate tool's job.
+- **Backup scheduling, verification or restore.** That is a separate tool's job, and the
+  tool is [Fleetward](https://github.com/danmorcov88/Fleetward) — which restores a backup
+  into a throwaway container and smoke-tests it, rather than believing a job that exited
+  zero. One boundary and two tools: Basewright hands over an instance that matches a plan
+  somebody approved, and Fleetward watches it for the rest of its life. Neither reaches
+  into the other's job.
 - **A monitoring stack.** An exporter can be installed as an optional role; Prometheus and
   Grafana are not Basewright's to run.
 - **Application schema deployment or data migration.**
