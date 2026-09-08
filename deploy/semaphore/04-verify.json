@@ -1,0 +1,31 @@
+{
+  "name": "Basewright: Verify",
+  "app": "ansible",
+  "type": "",
+  "playbook": "ansible/playbooks/verify.yml",
+  "description": "Read a running instance back and say whether it is still what its plan promised. Changes nothing, and can be run months after the apply. Takes a host and an instance name rather than a plan id: the store remembers which plan that instance was applied from. A mismatch ends the task red and the log names every check that did not match.",
+  "arguments": "[]",
+  "allow_override_args_in_task": false,
+  "project_id": 0,
+  "inventory_id": 0,
+  "repository_id": 0,
+  "environment_id": 0,
+  "survey_vars": [
+    {
+      "name": "basewright_hosts",
+      "title": "Host",
+      "description": "The host to read, as the inventory names it.",
+      "type": "",
+      "required": true,
+      "values": []
+    },
+    {
+      "name": "basewright_instance",
+      "title": "Instance name",
+      "description": "Which instance on that host. The store is asked which plan it was applied from, so no plan id has to be remembered.",
+      "type": "",
+      "required": true,
+      "values": []
+    }
+  ]
+}

@@ -170,4 +170,5 @@ def test_both_questions_are_reachable_from_ansible_and_nothing_else_is() -> None
         "basewright_template",
         "basewright_observation",
         "basewright_sockets",
+        "basewright_pointer",
     }

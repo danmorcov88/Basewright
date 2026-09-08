@@ -1,0 +1,59 @@
+{
+  "name": "Basewright: Plan",
+  "app": "ansible",
+  "type": "",
+  "playbook": "ansible/playbooks/plan.yml",
+  "description": "Produce the artifact: every path, package, account and sized parameter, each with the rule that produced it. Changes nothing. The plan is kept in the store under its own id, and the id is the last line of the log -- it is what the Apply template takes.",
+  "arguments": "[]",
+  "allow_override_args_in_task": false,
+  "project_id": 0,
+  "inventory_id": 0,
+  "repository_id": 0,
+  "environment_id": 0,
+  "survey_vars": [
+    {
+      "name": "basewright_hosts",
+      "title": "Host",
+      "description": "The host to plan for, as the inventory names it.",
+      "type": "",
+      "required": true,
+      "values": []
+    },
+    {
+      "name": "basewright_engine_name",
+      "title": "Engine",
+      "description": "Which database engine is being provisioned. The values are the directories under profiles/.",
+      "type": "enum",
+      "required": true,
+      "values": [{ "name": "PostgreSQL", "value": "postgresql" }]
+    },
+    {
+      "name": "basewright_version",
+      "title": "Engine version",
+      "description": "Leave empty to take the profile's default.",
+      "type": "",
+      "required": false,
+      "values": []
+    },
+    {
+      "name": "basewright_instance",
+      "title": "Instance name",
+      "description": "Leave empty to take the profile's default. Names the cluster, its paths and its unit.",
+      "type": "",
+      "required": false,
+      "values": []
+    },
+    {
+      "name": "basewright_environment",
+      "title": "Environment",
+      "description": "Recorded in the plan. Nothing gates on it yet, and the strictest of the plausible answers is the safest thing to assume.",
+      "type": "enum",
+      "required": false,
+      "values": [
+        { "name": "Production", "value": "production" },
+        { "name": "Staging", "value": "staging" },
+        { "name": "Development", "value": "development" }
+      ]
+    }
+  ]
+}

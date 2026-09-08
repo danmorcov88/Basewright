@@ -68,6 +68,7 @@
 
   vars:
     facts_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts"
+    store_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/store"
     project: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
 
   tasks:
@@ -79,22 +80,28 @@
         gather_engine: postgresql
         gather_report: false
 
-    - name: Plan an instance for it
+    # Into the store, under its own id, exactly as ansible/playbooks/plan.yml does it. The
+    # scenario could hand apply a path and prove less: what Semaphore passes is an id, so an
+    # id is what this passes, and the store is what has to work for that to mean anything.
+    - name: Plan an instance for it, and keep the plan
       ansible.builtin.command:
         cmd: >-
           {{ ansible_playbook_python }} -m basewright.cli plan
           --facts {{ facts_dir }}/{{ inventory_hostname }}.json
           --engine postgresql --json
+          --store {{ store_dir | quote }}
         chdir: "{{ project }}"
       changed_when: false
       delegate_to: localhost
       become: false
       register: planned
 
-    - name: Keep it where apply will read it
+    # The id, and nothing else, because the id is the whole of what travels between the
+    # person who plans and the person who applies.
+    - name: Remember the id the way an operator would
       ansible.builtin.copy:
-        content: "{{ planned.stdout }}"
-        dest: "{{ facts_dir }}/plan.json"
+        content: "{{ (planned.stdout | from_json).plan_id }}"
+        dest: "{{ facts_dir }}/plan_id"
         mode: "0640"
       delegate_to: localhost
       become: false

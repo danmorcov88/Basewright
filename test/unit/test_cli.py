@@ -543,8 +543,8 @@ def test_verify_needs_both_documents_and_says_which(capsys: CaptureFixture[str])
     who has a plan and no reading has not run the playbook yet."""
     assert main(["verify", "--plan", str(VERIFY_PLAN)]) == 64
 
-    refusal = capsys.readouterr().err
-    assert "--plan and --observed are both required" in refusal
+    refusal = " ".join(capsys.readouterr().err.split())
+    assert "--observed, and one of --plan, --plan-id or --host, are required" in refusal
     assert "ansible/playbooks/verify.yml" in refusal
 
 
@@ -656,3 +656,118 @@ def _observation_with(
     path = tmp_path / "observation.json"
     path.write_text(json.dumps(document, indent=2), encoding="utf-8")
     return path
+
+
+# ------------------------------------------------------- naming a plan by id, not by path
+
+#: A store with one plan in it, generated from the real one by tools/render_goldens.py.
+STORE = ROOT / "test" / "fixtures" / "store"
+STORED_PLAN_ID = json.loads(VERIFY_PLAN.read_text(encoding="utf-8"))["plan_id"]
+
+
+def test_a_plan_is_kept_in_the_store_and_the_id_goes_to_stderr(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """On stderr so that --json writes the artifact and nothing else to stdout. What the
+    next step needs off that line is the id, and the Apply template takes exactly that."""
+    code = main(
+        [
+            "plan",
+            "--facts",
+            str(FACTS / "typical.json"),
+            "--profile",
+            str(PROFILE),
+            "--json",
+            "--store",
+            str(tmp_path),
+        ]
+    )
+    printed = capsys.readouterr()
+    plan_id = json.loads(printed.out)["plan_id"]
+
+    assert code == 0
+    assert f"kept as {plan_id}" in printed.err
+    assert (tmp_path / "plans" / f"{plan_id}.json").is_file()
+
+
+def test_a_plan_read_back_by_id_is_the_one_that_was_kept(capsys: CaptureFixture[str]) -> None:
+    assert main(["plan", "--plan-id", STORED_PLAN_ID, "--store", str(STORE)]) == 0
+    assert STORED_PLAN_ID in capsys.readouterr().out
+
+
+def test_a_plan_id_the_store_has_not_got_is_a_usage_error(capsys: CaptureFixture[str]) -> None:
+    """64 rather than 2, and the same answer `--from nowhere.json` gets: nothing was read,
+    so nothing was decided and there is no report to read (ADR-0019)."""
+    assert main(["plan", "--plan-id", "000000000000", "--store", str(STORE)]) == 64
+    assert "has no plan 000000000000" in " ".join(capsys.readouterr().err.split())
+
+
+def test_a_plan_id_shaped_like_somewhere_else_is_refused(capsys: CaptureFixture[str]) -> None:
+    """It arrives from a survey field somebody typed, so the interesting input is not a
+    wrong id but one that names a file the store does not own."""
+    assert main(["plan", "--plan-id", "../../etc/passwd", "--store", str(STORE)]) == 64
+    assert "not a plan id" in " ".join(capsys.readouterr().err.split())
+
+
+def test_an_id_without_a_store_says_which_is_missing(capsys: CaptureFixture[str]) -> None:
+    assert main(["plan", "--plan-id", STORED_PLAN_ID]) == 64
+    assert "needs --store" in " ".join(capsys.readouterr().err.split())
+
+
+def test_a_path_and_an_id_are_not_given_together() -> None:
+    """Two doors to one request. Resolved by refusing rather than by a precedence rule
+    somebody would eventually rely on without meaning to."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["plan", "--from", "a.json", "--plan-id", "b"])
+
+
+def test_verify_finds_the_plan_from_the_host_and_the_instance(
+    capsys: CaptureFixture[str],
+) -> None:
+    """What §12 gives the Verify template, and the reason the store keeps a pointer at all:
+    somebody asking whether a database is what it should be knows which database they mean
+    and has no reason to know the id of a plan somebody else approved."""
+    code = main(
+        [
+            "verify",
+            "--store",
+            str(STORE),
+            "--host",
+            "apply-ubuntu2404",
+            "--instance",
+            "main",
+            "--observed",
+            str(VERIFY_OBSERVED),
+        ]
+    )
+
+    assert code == 0
+    assert "VERIFIED" in capsys.readouterr().out
+
+
+def test_verify_by_host_needs_the_instance_named(capsys: CaptureFixture[str]) -> None:
+    code = main(
+        ["verify", "--store", str(STORE), "--host", "db-01", "--observed", str(VERIFY_OBSERVED)]
+    )
+
+    assert code == 64
+    assert "--host needs --instance" in " ".join(capsys.readouterr().err.split())
+
+
+def test_an_instance_nobody_applied_a_plan_to_says_so(capsys: CaptureFixture[str]) -> None:
+    code = main(
+        [
+            "verify",
+            "--store",
+            str(STORE),
+            "--host",
+            "db-nothing.invalid",
+            "--instance",
+            "main",
+            "--observed",
+            str(VERIFY_OBSERVED),
+        ]
+    )
+
+    assert code == 64
+    assert "does not say which plan" in " ".join(capsys.readouterr().err.split())

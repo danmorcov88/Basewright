@@ -76,6 +76,12 @@ OBSERVED = ROOT / "test" / "fixtures" / "observations" / "observed.json"
 CHANGED = ROOT / "test" / "fixtures" / "observations" / "changed.json"
 WIDENED = ("work_mem", 67108864)
 
+#: A store with one plan in it and one instance pointing at that plan. Generated from the
+#: real plan above rather than committed by hand, so it cannot fall behind it, and committed
+#: at all because a refusal that says what the store *does* hold has to hold something
+#: somebody chose in order to be captured the same way twice.
+STORE = ROOT / "test" / "fixtures" / "store"
+
 #: The profiles every fixture host is put through, and the directory each one's answers
 #: are written under. The two do different jobs. The fictional engine exercises the
 #: pipeline and the schema without implying anything about anybody's production database;
@@ -123,7 +129,24 @@ def build() -> dict[Path, str]:
     goldens[EDITED] = _tampered_with(goldens)
     goldens[CHANGED] = _widened()
     goldens.update(_verified(goldens))
+    goldens.update(_stored())
     return goldens
+
+
+def _stored() -> dict[Path, str]:
+    """A store holding the real plan, and an instance pointing at it.
+
+    Two files rather than one, because the store answers two questions and both of them get
+    asked: which plan is this id, and which plan is this instance running. The second is
+    what lets the Verify template take a host and an instance name (§12).
+    """
+    rendered_plan = APPLIED.read_text(encoding="utf-8")
+    plan = json.loads(rendered_plan)
+    request = plan["request"]
+    return {
+        STORE / "plans" / f"{plan['plan_id']}.json": rendered_plan,
+        STORE / "instances" / request["host"] / request["instance"]: f"{plan['plan_id']}\n",
+    }
 
 
 def _widened() -> str:

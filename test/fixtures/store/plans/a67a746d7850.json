@@ -1,0 +1,595 @@
+{
+  "schema_version": "2",
+  "plan_id": "a67a746d7850",
+  "generated_at": "2026-09-04T13:48:20Z",
+  "tool_version": "0.1.0",
+  "profile": {
+    "engine": "postgresql",
+    "version": "0.1.0"
+  },
+  "request": {
+    "host": "apply-ubuntu2404",
+    "engine": "postgresql",
+    "version": "16",
+    "version_source": "profile_default",
+    "environment": "production",
+    "instance": "main",
+    "port": 5432
+  },
+  "host": {
+    "os": {
+      "family": "debian",
+      "distro": "ubuntu",
+      "version": "24.04",
+      "pretty_name": "Ubuntu 24.04.4 LTS",
+      "kernel": "5.15.167.4-microsoft-standard-WSL2"
+    },
+    "arch": "x86_64",
+    "cpu": {
+      "cores": 12,
+      "model": "12th Gen Intel(R) Core(TM) i5-12500"
+    },
+    "memory": {
+      "total_bytes": 16625172480,
+      "swap_bytes": 4294967296
+    },
+    "storage": [
+      {
+        "mount": "/backup",
+        "free_bytes": 59852476416,
+        "total_bytes": 63090503680,
+        "filesystem": "ext4",
+        "rotational": false
+      },
+      {
+        "mount": "/etc/hostname",
+        "free_bytes": 998934917120,
+        "total_bytes": 1081101176832,
+        "filesystem": "ext4",
+        "rotational": true
+      },
+      {
+        "mount": "/etc/hosts",
+        "free_bytes": 998934917120,
+        "total_bytes": 1081101176832,
+        "filesystem": "ext4",
+        "rotational": true
+      },
+      {
+        "mount": "/etc/resolv.conf",
+        "free_bytes": 998934917120,
+        "total_bytes": 1081101176832,
+        "filesystem": "ext4",
+        "rotational": true
+      },
+      {
+        "mount": "/var/lib/postgresql",
+        "free_bytes": 29898977280,
+        "total_bytes": 31526391808,
+        "filesystem": "ext4",
+        "rotational": false
+      },
+      {
+        "mount": "/var/log/postgresql",
+        "free_bytes": 4911144960,
+        "total_bytes": 5196382208,
+        "filesystem": "ext4",
+        "rotational": false
+      }
+    ]
+  },
+  "preflight": {
+    "summary": {
+      "pass": 20,
+      "warn": 3,
+      "block": 0,
+      "skip": 2
+    },
+    "results": [
+      {
+        "id": "disk.separate_mounts",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "warn",
+        "title": "Separation of the paths that ask for it",
+        "observed": "wal and data both live on /var/lib/postgresql",
+        "remediation": "Give them separate filesystems if the workload warrants it. Sharing costs failure isolation and makes one path able to fill the other; it is supported, and this is the record that it was chosen rather than overlooked."
+      },
+      {
+        "id": "os.thp",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "warn",
+        "title": "Transparent huge pages are as preferred",
+        "observed": "transparent huge pages are always; this profile prefers madvise, never",
+        "remediation": "Set them to madvise or never persistently, in the boot configuration rather than only at run time. A setting that reverts on the next reboot is a problem that comes back at the worst moment."
+      },
+      {
+        "id": "postgresql.wal.separate_spindle",
+        "source": "profile",
+        "severity": "warn",
+        "outcome": "warn",
+        "title": "The write-ahead log has a mount of its own",
+        "observed": "path.wal.mount != path.data.mount does not hold on this host",
+        "remediation": "Give the write-ahead log its own mount with a path override. Every committed transaction is a sequential write here and every checkpoint is a burst of random writes to the data directory; on one spindle they take turns, and the commit latency is what shows it. On solid state storage this matters much less and is still worth knowing."
+      },
+      {
+        "id": "firewall.state",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "skip",
+        "title": "The firewall admits the port",
+        "observed": "the host did not report a firewall",
+        "remediation": "Collect it, or accept that this is unanswered."
+      },
+      {
+        "id": "time.sync",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "skip",
+        "title": "The clock is synchronized",
+        "observed": "the host did not report a time synchronization service",
+        "remediation": "Collect it, or accept that this is unanswered."
+      },
+      {
+        "id": "arch.supported",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The architecture is supported",
+        "observed": "x86_64 is supported by PostgreSQL 16"
+      },
+      {
+        "id": "cpu.min_cores",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "Enough cores for this engine",
+        "observed": "12 cores, and 2 are required"
+      },
+      {
+        "id": "disk.filesystem",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "Paths are on a usual filesystem",
+        "observed": "every path is on one of ext4, xfs"
+      },
+      {
+        "id": "disk.free_space",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "Every path has the free space it needs",
+        "observed": "4 paths meet the free space this profile requires"
+      },
+      {
+        "id": "disk.paths_writable",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "Every path is on a writable mount",
+        "observed": "4 paths, all on writable mounts"
+      },
+      {
+        "id": "engine.not_installed",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "Nothing conflicting is installed",
+        "observed": "none of the 1 conflicts this profile declares is present"
+      },
+      {
+        "id": "host.privilege",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The account can do privileged work",
+        "observed": "root can escalate"
+      },
+      {
+        "id": "host.reachable",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The facts describe the host requested",
+        "observed": "the facts describe apply-ubuntu2404, which is the host requested"
+      },
+      {
+        "id": "locale.present",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The locale initialization needs exists",
+        "observed": "en_US.UTF-8 is present"
+      },
+      {
+        "id": "mem.min_total",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "Enough memory for this engine",
+        "observed": "15.5 GiB of memory, and 2GB is required"
+      },
+      {
+        "id": "os.supported",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The operating system is supported",
+        "observed": "ubuntu 24.04 is supported by PostgreSQL 16"
+      },
+      {
+        "id": "os.swappiness",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "The kernel is not eager to swap",
+        "observed": "vm.swappiness is 10, and this profile prefers at most 10"
+      },
+      {
+        "id": "port.free",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The port is not already taken",
+        "observed": "nothing is listening on 5432"
+      },
+      {
+        "id": "postgresql.memory.headroom",
+        "source": "profile",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "Memory free for the instance to grow into",
+        "observed": "host.memory.available_bytes >= host.memory.total_bytes / 4 holds on this host"
+      },
+      {
+        "id": "postgresql.port.unprivileged",
+        "source": "profile",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "A port the service account can bind without privilege",
+        "observed": "request.port > 1024 holds on this host"
+      },
+      {
+        "id": "postgresql.storage.rotational",
+        "source": "profile",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "Data directory on rotational storage",
+        "observed": "not path.data.rotational holds on this host"
+      },
+      {
+        "id": "postgresql.swap.present",
+        "source": "profile",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "The machine has some swap",
+        "observed": "host.memory.swap_bytes > 0 holds on this host"
+      },
+      {
+        "id": "repo.reachable",
+        "source": "shared",
+        "severity": "block",
+        "outcome": "pass",
+        "title": "The package repository answers",
+        "observed": "pgdg answers from this host"
+      },
+      {
+        "id": "version.eol",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "The version has support left",
+        "observed": "PostgreSQL 16 reaches end of life on 2028-11-09, 797 days away"
+      },
+      {
+        "id": "version.not_default",
+        "source": "shared",
+        "severity": "warn",
+        "outcome": "pass",
+        "title": "The version is the profile default",
+        "observed": "16 is this profile's default"
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "parameter": "shared_buffers",
+      "value": 4026531840,
+      "unit": "bytes",
+      "display": "3.8 GiB",
+      "rule": "postgresql.shared_buffers",
+      "why": "A quarter of memory is the long-standing starting point, and the cap is the more interesting half of the rule. Past about sixteen gigabytes the operating system page cache is the better place for the memory: it holds the same pages, it can be reclaimed under pressure, and it does not have to be written back through this buffer pool first. A larger number here is a decision about a specific workload rather than a consequence of a larger machine."
+    },
+    {
+      "parameter": "effective_cache_size",
+      "value": 12348030976,
+      "unit": "bytes",
+      "display": "11.5 GiB",
+      "rule": "postgresql.effective_cache_size",
+      "why": "Not an allocation, and nothing is reserved by it. It is what the planner is told to assume is cached between the buffer pool and the page cache, and it decides whether an index scan looks cheaper than a sequential one. Set too low, the planner avoids indexes it would have read from memory."
+    },
+    {
+      "parameter": "maintenance_work_mem",
+      "value": 1006632960,
+      "unit": "bytes",
+      "display": "960.0 MiB",
+      "rule": "postgresql.maintenance_work_mem",
+      "why": "Charged per maintenance operation rather than per connection, and both vacuum and index builds are much faster with room to work in. Capped at two gigabytes because each autovacuum worker takes one of these, so the cost is paid several times over past the point where the return has flattened out."
+    },
+    {
+      "parameter": "max_connections",
+      "value": 100,
+      "unit": "count",
+      "display": "100",
+      "rule": "postgresql.max_connections",
+      "why": "The upstream default, kept deliberately. Every backend is a process with its own memory, so a larger number here means a larger machine or a smaller work_mem, and neither is free. Past four hundred the answer is a connection pooler rather than a bigger number, which is why that is where the warning sits."
+    },
+    {
+      "parameter": "work_mem",
+      "value": 13631488,
+      "unit": "bytes",
+      "display": "13.0 MiB",
+      "rule": "postgresql.work_mem",
+      "why": "Charged per sort or hash node rather than per connection, and one query can hold several at once, which is what the division by three allows for. It reads max_connections, so the two are computed in that order however they are written here. This is the parameter that turns a busy afternoon into an out-of-memory kill, and it is sized to be survivable rather than fast."
+    },
+    {
+      "parameter": "wal_buffers",
+      "value": 16777216,
+      "unit": "bytes",
+      "display": "16.0 MiB",
+      "rule": "postgresql.wal_buffers",
+      "why": "A thirty-second of the buffer pool, capped where PostgreSQL's own automatic setting stops. Beyond one log segment there is nothing further to buffer: the log is written and flushed on commit either way.",
+      "bounded_by": "max"
+    },
+    {
+      "parameter": "min_wal_size",
+      "value": 1073741824,
+      "unit": "bytes",
+      "display": "1.0 GiB",
+      "rule": "postgresql.min_wal_size",
+      "why": "The floor the log is allowed to shrink back to. Recycling segments already on disk costs nothing; creating them again during the next burst costs a write per segment, at the worst possible moment."
+    },
+    {
+      "parameter": "max_wal_size",
+      "value": 4294967296,
+      "unit": "bytes",
+      "display": "4.0 GiB",
+      "rule": "postgresql.max_wal_size",
+      "why": "How much log may accumulate before a checkpoint is forced. Larger means fewer checkpoints and less write amplification, and a longer recovery after a crash. Four gigabytes is roughly where most workloads stop noticing either, and it is what the free space floor on the wal path is set to cover several times over."
+    },
+    {
+      "parameter": "checkpoint_completion_target",
+      "value": 0.9,
+      "unit": "ratio",
+      "display": "0.9",
+      "rule": "postgresql.checkpoint_completion_target",
+      "why": "Spread a checkpoint's writes across nine tenths of the interval rather than issuing them as fast as the disk will take them. The alternative is a periodic stall that shows up in commit latency and nowhere else, which is very hard to explain to whoever reports it."
+    },
+    {
+      "parameter": "max_worker_processes",
+      "value": 12,
+      "unit": "count",
+      "display": "12",
+      "rule": "postgresql.max_worker_processes",
+      "why": "One per core above eight, and the upstream default of eight below that: a small machine is not improved by having fewer background workers than PostgreSQL assumes it has. This is a ceiling on processes rather than a reservation of them."
+    },
+    {
+      "parameter": "max_parallel_workers",
+      "value": 12,
+      "unit": "count",
+      "display": "12",
+      "rule": "postgresql.max_parallel_workers",
+      "why": "Every parallel worker comes out of the pool above, so allowing more of them than exist would be a number that means nothing. They are kept equal by reading it, so that the relationship is visible in the plan rather than implied by two numbers that happen to match."
+    },
+    {
+      "parameter": "max_parallel_workers_per_gather",
+      "value": 6,
+      "unit": "count",
+      "display": "6",
+      "rule": "postgresql.max_parallel_workers_per_gather",
+      "why": "Half the cores, so one large query cannot take the whole machine and leave every other connection queued behind it. Capped at eight because past that the coordination between workers costs more than the parallelism returns on anything but a pure scan."
+    },
+    {
+      "parameter": "max_parallel_maintenance_workers",
+      "value": 3,
+      "unit": "count",
+      "display": "3",
+      "rule": "postgresql.max_parallel_maintenance_workers",
+      "why": "Index builds parallelise well and are usually run while something else is using the machine, so this is deliberately smaller than the per-query limit. Each worker also takes its own maintenance_work_mem, which is the real reason for the cap."
+    },
+    {
+      "parameter": "autovacuum_max_workers",
+      "value": 3,
+      "unit": "count",
+      "display": "3",
+      "rule": "postgresql.autovacuum_max_workers",
+      "why": "Three is the upstream default and is enough for a small machine. More cores usually means more tables written to at once, and autovacuum falling behind is the failure that stays invisible until the day a table is twice the size it should be."
+    },
+    {
+      "parameter": "random_page_cost",
+      "value": 1.1,
+      "unit": "ratio",
+      "display": "1.1",
+      "rule": "postgresql.random_page_cost",
+      "why": "On solid state storage a random read costs very nearly what a sequential one does, and a planner told otherwise avoids indexes it should be using. Four is the upstream default and is written for a disk with a seek to pay for. This is the one parameter here whose right answer is a property of the hardware rather than of the workload."
+    },
+    {
+      "parameter": "effective_io_concurrency",
+      "value": 200,
+      "unit": "count",
+      "display": "200",
+      "rule": "postgresql.effective_io_concurrency",
+      "why": "How many reads the storage can usefully have in flight at once, which is what a bitmap heap scan uses to decide how far ahead to prefetch. Two hundred describes a device that queues internally; two describes a device with one arm."
+    },
+    {
+      "parameter": "default_statistics_target",
+      "value": 100,
+      "unit": "count",
+      "display": "100",
+      "rule": "postgresql.default_statistics_target",
+      "why": "The upstream default, here to be visible rather than to be changed. Raising it is a per-column decision taken after a bad plan has been diagnosed, not something to do to every column of every table in advance."
+    }
+  ],
+  "layout": {
+    "paths": [
+      {
+        "purpose": "data",
+        "path": "/var/lib/postgresql/16/main",
+        "mode": "0700",
+        "owner": "postgres",
+        "group": "postgres",
+        "mount": "/var/lib/postgresql"
+      },
+      {
+        "purpose": "wal",
+        "path": "/var/lib/postgresql/16/main/pg_wal",
+        "mode": "0700",
+        "owner": "postgres",
+        "group": "postgres",
+        "mount": "/var/lib/postgresql"
+      },
+      {
+        "purpose": "log",
+        "path": "/var/log/postgresql",
+        "mode": "0750",
+        "owner": "postgres",
+        "group": "postgres",
+        "mount": "/var/log/postgresql"
+      },
+      {
+        "purpose": "backup",
+        "path": "/backup/postgresql/main",
+        "mode": "0750",
+        "owner": "postgres",
+        "group": "postgres",
+        "mount": "/backup"
+      }
+    ],
+    "service_account": {
+      "name": "postgres",
+      "shell": "/bin/bash",
+      "create": false,
+      "group": "postgres"
+    }
+  },
+  "packages": {
+    "family": "debian",
+    "install": [
+      "postgresql-16",
+      "postgresql-client-16",
+      "postgresql-contrib"
+    ],
+    "service": "postgresql@16-main",
+    "repository": {
+      "name": "pgdg",
+      "url": "https://apt.postgresql.org/pub/repos/apt",
+      "gpg_check": true,
+      "key_url": "https://www.postgresql.org/media/keys/ACCC4CF8.asc",
+      "suite": "noble-pgdg",
+      "components": [
+        "main"
+      ]
+    }
+  },
+  "initialization": {
+    "description": "Create the cluster in the data directory the plan names, on the planned port, with the locale this host was already checked for. None of it can be changed afterwards without dumping and reloading every database in it.",
+    "locale": "en_US.UTF-8",
+    "settings": [
+      {
+        "name": "encoding",
+        "value": "UTF8",
+        "why": "The only encoding worth choosing in 2026, and the one every client library assumes unless told otherwise. A cluster created in a single-byte encoding is a cluster that corrupts the first name somebody types an accent into, and the repair is a dump and a reload."
+      },
+      {
+        "name": "data_checksums",
+        "value": true,
+        "why": "Silent corruption on the storage underneath is otherwise found by reading a wrong answer out of a query. Checksums turn that into an error at the moment the page is read, which is the difference between a restore and an investigation. They cost a few percent of throughput and they cannot be turned on afterwards without taking the cluster down."
+      },
+      {
+        "name": "start_conf",
+        "value": "auto",
+        "why": "The Debian packaging keeps a per-cluster start policy, and the default for a cluster created by hand is not the one a provisioned instance wants: an instance that does not come back after a reboot is discovered by the reboot."
+      }
+    ]
+  },
+  "configuration": [
+    {
+      "id": "postgresql.tuning",
+      "template": "basewright.conf.j2",
+      "destination": "/etc/postgresql/16/main/conf.d/basewright.conf",
+      "mode": "0640",
+      "owner": "postgres",
+      "group": "postgres",
+      "carries_parameters": true,
+      "description": "The sized parameters, as a drop-in read after the packaged configuration. Every value in it is one the plan explains."
+    },
+    {
+      "id": "postgresql.host_based_auth",
+      "template": "pg_hba.conf.j2",
+      "destination": "/etc/postgresql/16/main/pg_hba.conf",
+      "mode": "0640",
+      "owner": "postgres",
+      "group": "postgres",
+      "carries_parameters": false,
+      "description": "Which connections are accepted and how they prove who they are. Written rather than added to, because access is not something to leave inherited."
+    }
+  ],
+  "tunables": [
+    {
+      "name": "vm.swappiness",
+      "value": 10,
+      "why": "An instance whose shared buffers the kernel has swapped out pays for that memory twice: once to hold it and again to fault it back in, during whatever query noticed. Ten leaves the kernel room to swap under genuine pressure without doing it for the sake of the page cache.",
+      "observed": 10
+    },
+    {
+      "name": "vm.overcommit_memory",
+      "value": 2,
+      "why": "Refusing an allocation the machine cannot honour is better than granting it and leaving the out-of-memory killer to choose which process dies -- because it chooses the largest one, and on this machine that is the postmaster. PostgreSQL's own documentation asks for this setting for exactly that reason.",
+      "observed": 2
+    }
+  ],
+  "changes": [
+    {
+      "action": "add",
+      "description": "add package repository pgdg (https://apt.postgresql.org/pub/repos/apt)"
+    },
+    {
+      "action": "add",
+      "description": "install postgresql-16, postgresql-client-16, postgresql-contrib"
+    },
+    {
+      "action": "add",
+      "description": "create 4 directories"
+    },
+    {
+      "action": "add",
+      "description": "initialize the instance (locale=en_US.UTF-8, encoding=UTF8, data_checksums=true, start_conf=auto)"
+    },
+    {
+      "action": "add",
+      "description": "write /etc/postgresql/16/main/conf.d/basewright.conf (17 parameters)"
+    },
+    {
+      "action": "add",
+      "description": "write /etc/postgresql/16/main/pg_hba.conf"
+    },
+    {
+      "action": "add",
+      "description": "enable and start postgresql@16-main"
+    }
+  ],
+  "secrets": [
+    {
+      "name": "superuser password",
+      "location": "basewright/apply-ubuntu2404/postgresql/main/superuser",
+      "description": "The cluster superuser's password, generated at apply time and written once to the secret store. The plan names where it is, never what it is (ADR-0007)."
+    }
+  ],
+  "result": {
+    "applicable": true,
+    "warnings": 3,
+    "warnings_require_acknowledgement": true
+  }
+}

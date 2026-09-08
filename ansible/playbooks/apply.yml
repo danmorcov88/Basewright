@@ -16,20 +16,62 @@
 # this build does not implement, and a plan somebody has edited, are both refused by the
 # tool that produced them rather than by a second opinion written in YAML.
 - name: Apply a plan
-  hosts: "{{ basewright_hosts | default('all') }}"
+  # The host comes out of the plan, which is why the Apply template has no host field (§12).
+  # A plan is built from one machine's facts and refuses to be applied to another, so asking
+  # an operator to name the host as well would be asking them to repeat something the
+  # artifact already carries -- and to be the one who gets it wrong. `basewright_hosts` is
+  # still honoured, because somebody running this by hand may have a reason.
+  #
+  # Long, and it has to be here rather than in `vars:`: a play's `hosts:` is resolved before
+  # its vars exist. `errors='ignore'` is load-bearing rather than defensive -- this is
+  # evaluated even when nobody has named a plan at all, by a syntax check for one, and a
+  # playbook that cannot be linted is worse than one that falls back to the pattern matching
+  # everything. Falling back is safe: the first pre_task refuses a run that named no plan,
+  # and the second reads the plan back before any task touches a host.
+  hosts: >-
+    {{ basewright_hosts | default(
+         (lookup('file',
+                 basewright_plan_file | default(
+                   (basewright_plan_store | default(playbook_dir ~ '/../../plans', true))
+                   ~ '/plans/' ~ (basewright_plan_id | default('none', true)) ~ '.json',
+                   true),
+                 errors='ignore')
+          | default('{}', true) | from_json).get('request', {}).get('host', 'all'), true) }}
   gather_facts: true
 
   vars:
-    # The plan to apply. There is no other input, and that is the whole design: if apply
-    # needs a value this document does not carry, the document is incomplete and the plan
-    # step is where that gets fixed.
-    basewright_plan_path: "{{ basewright_plan_file | mandatory }}"
+    # The plan to apply, named one of two ways. There is no other input, and that is the
+    # whole design: if apply needs a value this document does not carry, the document is
+    # incomplete and the plan step is where that gets fixed.
+    #
+    # A path is what somebody running this by hand has. An id is what §12 gives the Apply
+    # template, and it is the more interesting of the two: an id is a digest of the plan's
+    # own content, so it survives being copied out of a task log into a change request and
+    # back into a survey field, which a path on somebody else's disk does not.
+    # Defaulted in two places, and it has to be: `hosts:` is resolved before a play's vars
+    # exist, so the line above carries its own copy of this default. Under Semaphore neither
+    # is used -- the environment sets it to the volume the plans live on, which is the whole
+    # reason the store is durable.
+    basewright_plan_store: "{{ playbook_dir }}/../../plans"
+    basewright_plan_path: >-
+      {{ basewright_plan_file
+         | default(basewright_plan_store ~ '/plans/' ~ basewright_plan_id ~ '.json', true) }}
     basewright_plan: "{{ lookup('file', basewright_plan_path) | from_json }}"
     # Warnings are acknowledged before apply runs, not overridden while it does (ADR-0004).
     # There is no equivalent for a block, and there never will be: a plan cannot carry one.
     basewright_accept_warnings: false
 
   pre_tasks:
+    - name: Insist on being told which plan to apply
+      ansible.builtin.assert:
+        that: (basewright_plan_file is defined) or (basewright_plan_id is defined)
+        fail_msg: >-
+          Give this either a plan id, with -e basewright_plan_id=..., or a path, with
+          -e basewright_plan_file=.... An id is what the plan step printed and what the
+          Apply template takes; a path is for running this by hand.
+        success_msg: applying {{ basewright_plan_path }}
+      delegate_to: localhost
+
     # Once per host rather than once per run, and the two are the same thing here: a plan is
     # built from one host's facts, and the drift check below refuses it against any other.
     - name: Read the plan back through the tool that wrote it
@@ -121,3 +163,34 @@
       ansible.builtin.include_role:
         name: "{{ basewright_plan.profile.engine }}"
         tasks_from: start
+
+  # Last, and only if everything above it worked. The note says which plan this instance is
+  # supposed to match from now on, which is what lets the Verify template take a host and an
+  # instance name rather than an id nobody would remember (§12).
+  #
+  # It is one line, overwritten every time. There is no history in it and no who: an audit
+  # trail is Phase E, and half of one would look like a record while answering none of the
+  # questions a record is asked.
+  #
+  # Where the note goes is decided by `basewright_pointer` and written here. Every part of
+  # that path comes from a name somebody typed into a survey field, so building it is a
+  # question with a wrong answer -- and writing a line into a file is not (ADR-0008).
+  post_tasks:
+    # `copy` does not make the directory it writes into, and the Python this replaced did.
+    # Found by running it: the apply finished, the instance was correct, and the note that
+    # makes it findable failed on the last task of the play.
+    - name: Make somewhere for the note to land
+      ansible.builtin.file:
+        path: "{{ basewright_plan | basewright_pointer(basewright_plan_store) | dirname }}"
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: false
+
+    - name: Note which plan this instance is now running
+      ansible.builtin.copy:
+        content: "{{ basewright_plan.plan_id }}\n"
+        dest: "{{ basewright_plan | basewright_pointer(basewright_plan_store) }}"
+        mode: "0640"
+      delegate_to: localhost
+      become: false

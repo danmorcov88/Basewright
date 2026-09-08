@@ -142,13 +142,26 @@ def test_the_only_thing_looked_up_outside_the_plan_is_a_template(path: Path) -> 
     assert not outside, f"{path.name} reads {sorted(outside)}, which the plan does not carry"
 
 
-def test_the_playbook_takes_one_input_and_it_is_a_plan(playbook: list[dict[str, Any]]) -> None:
-    play = playbook[0]
+@pytest.mark.parametrize("path", PLAYBOOKS, ids=lambda path: path.name)
+def test_the_playbook_takes_one_input_and_it_is_a_plan(path: Path) -> None:
+    """The plan can be named by path or by id -- and, for verify, by the instance running it
+    (§12). What may not happen is a run that starts without knowing which plan it is about.
 
-    assert "basewright_plan_file" in yaml.safe_dump(play["vars"])
-    assert "mandatory" in yaml.safe_dump(play["vars"]), (
-        "a missing plan has to fail where the mistake was made, not four tasks later"
+    Checked as a refusal before the first role rather than as a `| mandatory` on the
+    variable, because there is more than one way to name it now and a default that filled
+    one in from the others would be the playbook guessing."""
+    play = loaded(path)[0]
+    declared = yaml.safe_dump(play["vars"])
+
+    assert "basewright_plan_file" in declared
+    assert "basewright_plan_id" in declared
+
+    first = play["pre_tasks"][0]
+    assert "ansible.builtin.assert" in first, (
+        f"{path.name} must refuse an unnamed plan where the mistake was made, not four tasks later"
     )
+    named = yaml.safe_dump(first["ansible.builtin.assert"]["that"])
+    assert "basewright_plan_file" in named and "basewright_plan_id" in named
 
 
 # ------------------------------------------------------------------------- the phases
@@ -242,3 +255,32 @@ def test_the_store_is_a_seam_rather_than_a_detail() -> None:
     defaults = yaml.safe_load((ROLES / "common" / "defaults" / "main.yml").read_text("utf-8"))
 
     assert defaults["common_secret_store"] in defaults["common_secret_stores"]
+
+
+# ------------------------------------------------------- what the local linter keeps missing
+
+
+@pytest.mark.parametrize("path", PLAYBOOKS, ids=lambda path: path.name)
+def test_no_playbook_task_uses_run_once(path: Path) -> None:
+    """`run_once` in a playbook is refused by ansible-lint at the production profile, and
+    rightly: it behaves as an optimisation only under a linear strategy.
+
+    Held here as well because the local linter does not report it. Three sessions running,
+    on the version CI installs, a clean local `ansible-lint` has passed a playbook CI then
+    refused for this one rule -- so this is the check that fails on the machine the code is
+    written on rather than twenty minutes later in a pull request.
+
+    A role's tasks are not covered: the rule does not apply to them, because a role cannot
+    know the strategy of the play that includes it.
+    """
+    body = path.read_text(encoding="utf-8")
+    offending = [
+        number
+        for number, line in enumerate(body.split("\n"), start=1)
+        if line.strip().startswith("run_once:") and not line.strip().startswith("run_once: #")
+    ]
+
+    assert not offending, (
+        f"{path.name} uses run_once at line(s) {offending}. ansible-lint refuses it at the "
+        "production profile and the local run will not tell you."
+    )

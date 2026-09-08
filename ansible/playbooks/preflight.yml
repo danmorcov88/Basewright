@@ -1,0 +1,74 @@
+---
+# Whether a host can carry the instance somebody is asking for, decided before anything is
+# touched. Semaphore runs this; it does not run the CLI (ADR-0020).
+#
+# Two steps and no more. The collecting role reads the machine and writes the document, and
+# `basewright preflight` puts the twenty shared rules and every rule the profile adds to
+# what it wrote. Nothing here decides anything: the playbook reaches the host, and the
+# refusal -- when there is one -- is written by the half that has never opened a socket.
+#
+# Nothing changes the target. That is asserted rather than promised, in
+# test/unit/test_gather_is_read_only.py, which reads the collecting role's tasks and fails
+# on any module that could change a machine.
+#
+# A block ends this play. It is the whole point: a host that cannot carry the instance is
+# reported as refused, with the rule and the way out, and there is no flag anywhere that
+# turns that into a plan (ADR-0004).
+- name: Decide whether a host can carry the instance
+  hosts: "{{ basewright_hosts | default('all') }}"
+  gather_facts: true
+
+  vars:
+    # What is being asked for. The engine is the only one of these without a default,
+    # because everything else has a defensible answer in the profile and the engine does
+    # not -- there is no sensible guess at which database somebody meant.
+    basewright_engine: "{{ basewright_engine_name | mandatory }}"
+    basewright_facts_dir: "{{ playbook_dir }}/../../facts"
+    basewright_facts_path: "{{ basewright_facts_dir }}/{{ inventory_hostname }}.json"
+
+  tasks:
+    # Told what is being provisioned, and for one fact only: whether the host can reach the
+    # repository its packages would come from, which is written in a profile
+    # (ADR-0021). Every other rule asks about the machine alone.
+    - name: Read what the host is
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_output_dir: "{{ basewright_facts_dir }}"
+        gather_engine: "{{ basewright_engine }}"
+        gather_engine_version: "{{ basewright_version | default(omit) }}"
+        gather_report: false
+
+    # Read rather than raised, so the report reaches the task log before the play ends on
+    # it. A refusal is a first-class outcome and the thing an operator came for; a traceback
+    # where the report should be would be the tool refusing to say why.
+    - name: Put every rule to it
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli preflight
+          --facts {{ basewright_facts_path | quote }}
+          --engine {{ basewright_engine | quote }}
+          {{ ('--engine-version ' ~ basewright_version | quote) if basewright_version is defined
+             else '' }}
+          {{ ('--instance ' ~ basewright_instance | quote) if basewright_instance is defined
+             else '' }}
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      register: basewright_preflight
+
+    - name: Say what it came to
+      ansible.builtin.debug:
+        msg: "{{ basewright_preflight.stdout_lines + basewright_preflight.stderr_lines }}"
+
+    - name: A host that cannot carry the instance ends the run
+      ansible.builtin.assert:
+        that: basewright_preflight.rc == 0
+        fail_msg: >-
+          {{ inventory_hostname }} cannot carry {{ basewright_engine }} as asked. The report
+          above names every rule that blocked, what was found, what was required, and what
+          would have to change. Change the machine or change the request; there is no flag
+          that turns a block into a warning.
+        success_msg: >-
+          this host can be provisioned -- read the warnings above before planning

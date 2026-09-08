@@ -5,11 +5,12 @@
 [![CI](https://github.com/danmorcov88/Basewright/actions/workflows/ci.yml/badge.svg)](https://github.com/danmorcov88/Basewright/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
-[![Status](https://img.shields.io/badge/status-foundation%20complete-blue.svg)](docs/dev/STATUS.md)
+[![Status](https://img.shields.io/badge/status-usable%20for%20PostgreSQL%20on%20Debian-blue.svg)](docs/dev/STATUS.md)
 
 [Why](#why-basewright) · [How it works](#how-it-works) · [The one rule](#the-one-rule) ·
-[Quickstart](#quickstart) · [Engines](#supported-engines) ·
-[Writing a profile](#writing-a-profile) · [Contributing](.github/CONTRIBUTING.md)
+[Quickstart](#quickstart) · [Operating it](#how-it-is-operated) ·
+[Engines](#supported-engines) · [Writing a profile](#writing-a-profile) ·
+[Runbook](docs/dev/runbook.md) · [Contributing](.github/CONTRIBUTING.md)
 
 ---
 
@@ -391,6 +392,54 @@ kind judges the port, because the port is what the plan carries; that this insta
 to no address but loopback is `profiles/postgresql/`'s own decision, written as an
 expression in the file where somebody arguing with it would look.
 
+## How it is operated
+
+Semaphore is the interface and there is no other one
+([ADR-0005](docs/adr/0005-semaphore-is-the-interface.md)). Four templates, one per verb, and
+`deploy/semaphore/` ships their definitions as JSON with a setup guide beside them:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/semaphore-templates-dark.svg">
+  <img alt="The four Semaphore templates, the survey fields each one asks for, and the playbook each one runs"
+       src="docs/assets/semaphore-templates-light.svg" width="940">
+</picture>
+
+That picture is drawn from the definitions rather than written beside them, so a survey
+field added to a template arrives in the documentation with it.
+
+Two of the four rows are worth reading twice, because they are where the design shows.
+
+**Apply asks for a plan id and no host.** A plan is built from one machine's facts and
+refuses to be applied to another, so the host is in the artifact already; asking for it
+again would be asking somebody to repeat something the plan carries, and to be the one who
+gets it wrong. **Verify asks for a host and an instance and no plan id**, because somebody
+asking whether a database is what it should be knows which database they mean and has no
+reason to know the id of a plan somebody else approved.
+
+What travels between Plan and Apply is the id, and the id is a digest of the plan's own
+content — so it is a name and a checksum at once. **The person who produces a plan and the
+person who applies it can be different people, on different days**, which §12 of the brief
+calls a feature rather than an accident. Plans are kept in a durable store, addressed by
+that id:
+
+```
+basewright plan --plan-id 000000000000 --store test/fixtures/store
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/plan-not-in-store-dark.svg">
+  <img alt="basewright plan refusing a plan id the store has not got, and listing what it does hold"
+       src="docs/assets/plan-not-in-store-light.svg" width="760">
+</picture>
+
+The store keeps one more thing and deliberately not a third: a single line per instance
+naming the plan it was last applied from, which is what lets Verify take a host and an
+instance. It is overwritten every time, with no history and no who. An audit trail is a
+later phase, and half of one would look like a record while answering none of the questions
+a record is asked.
+
+[docs/dev/runbook.md](docs/dev/runbook.md) is what to do when one of these goes red.
+
 All five verbs exist:
 
 ```
@@ -534,15 +583,16 @@ basewright/
 │   ├── planner/                 # sizing evaluation, layout resolution, plan assembly
 │   ├── verify/                  # judging a reading against the plan it came from
 │   ├── report/                  # human and JSON rendering, shared by plan and verify
+│   ├── store.py                 # where a plan lives between planning and applying
 │   └── cli.py                   # thin: basewright gather|preflight|plan|verify
 ├── ansible/                     # Ansible: the part that acts
-│   ├── playbooks/               # gather.yml, apply.yml, verify.yml
+│   ├── playbooks/               # one per verb: gather, preflight, plan, apply, verify
 │   ├── roles/                   # common, then one thin role per engine
 │   ├── plugins/                 # action/filter plugins bridging to the Python package
 │   └── inventory/example/
 ├── profiles/                    # engine data — the extension point
 ├── schema/                      # JSON Schema for every profile file and for plan.json
-├── deploy/semaphore/            # template definitions + setup guide
+├── deploy/semaphore/            # four template definitions + setup guide
 ├── test/
 │   ├── unit/                    # pytest: facts, gates, sizing, rendering
 │   ├── golden/                  # fixture facts → expected plan output
@@ -638,30 +688,46 @@ boundaries that keep the scope finishable —
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete   |
 | **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | complete    |
-| **Phase B**    | RHEL/Rocky, Semaphore templates, plan storage               | not started |
+| **Phase B**    | Semaphore templates, plan storage, runbook                   | complete    |
 | **Phase C**    | A second engine, proving the core needed no changes         | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
 | **Phase E**    | Audit trail, plan diff against a live host, signed releases | not started |
 
-**Phase A is complete, and the loop closes.** A bare `ubuntu:24.04` container is read,
-gated, planned for, provisioned from its own plan, provisioned again with zero changes, and
-then asked whether it is what the plan promised — and CI does all of that on every pull
-request. Then the scenario changes a parameter on the running instance behind the plan's
-back and insists `verify` goes red, because a verify that only ever passes has not been
-shown to be looking.
+Phase B as the brief writes it also contains RHEL and Rocky, and this repository does not
+ship them. The profile declares the Debian family because that is the family CI provisions
+on every pull request, and declaring another before it is tested would be a claim rather
+than a fact. Adding one is a support-matrix entry, a packages entry and a scenario — no core
+change, which is the whole point of engines being data.
 
-What that does not mean is that the numbers are settled. Seven conventions have to come
-from the estate — path layout, service account, locale, authentication rules, the minimum
-resources a production instance may run on, the OS families actually in use, and the port
-convention. None has arrived. `profiles/postgresql/` ships reasonable upstream defaults for
-all seven and [docs/dev/STATUS.md](docs/dev/STATUS.md) lists which is which, row by row,
-with the argument for each. **Every one of them is an assumption rather than a policy**,
-and each is a single value in a reviewable YAML file. The minimums in particular become
-block thresholds with no run-time override, so they have to be numbers somebody will defend
-in a review.
+**Phases A and B are complete, and the loop closes.** A bare `ubuntu:24.04` container is
+read, gated, planned for, provisioned from its own plan, provisioned again with zero
+changes, and then asked whether it is what the plan promised — and CI does all of that on
+every pull request. Then the scenario changes a parameter on the running instance behind the
+plan's back and insists `verify` goes red, because a verify that only ever passes has not
+been shown to be looking.
 
-Detail, and the placeholder values that still need real numbers from the estate, are in
-[docs/dev/STATUS.md](docs/dev/STATUS.md).
+**Provisioning a database is a form somebody fills in**, not a command somebody remembers:
+four Semaphore templates, plans kept in a store and found again by the id printed in a task
+log, and [a runbook](docs/dev/runbook.md) for when one of them goes red.
+
+Seven conventions had to be settled before a profile could describe a real engine — path
+layout, service account, locale, authentication rules, the minimum resources a production
+instance may run on, the OS families supported, and the port convention. **This repository
+decides all seven** ([ADR-0026](docs/adr/0026-the-profiles-defaults-are-decisions.md)), and
+[docs/dev/STATUS.md](docs/dev/STATUS.md) states each one with the argument for it and the
+line that changes it.
+
+Six of them are forced rather than chosen: the paths are where the vendor's packaging puts
+things, the account is the one the package creates, the encoding is the only defensible
+answer, the families are the ones that are tested. The minimums are the row that needed
+somebody willing to defend it, because they become block thresholds with no run-time
+override — 2 cores, 2 GB, and a floor per path.
+
+**An estate that disagrees changes a line, not a fork.** That is what engines-as-data buys:
+every one of the seven is a single value in a YAML file under `profiles/`, with the reasoning
+for the original still written beside it. The two most likely to be changed — what the backup
+mount is called, and whether the write-ahead log gets a mount of its own — are named as such
+on the status page rather than left to be discovered.
 
 ## What Basewright is not
 

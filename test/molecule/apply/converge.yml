@@ -7,8 +7,18 @@
 - name: Import the playbook that applies a plan
   ansible.builtin.import_playbook: ../../../ansible/playbooks/apply.yml
   vars:
-    basewright_plan_file: >-
-      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/facts/plan.json
+    # By id and out of the store, which is how Semaphore runs it. No host either: the play
+    # reads that out of the plan, and the container this runs against is the one the plan was
+    # built from -- so this is the derivation being tested rather than assumed.
+    basewright_plan_store: >-
+      {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/store
+    # `errors='ignore'` because molecule runs its syntax check before prepare, so this file
+    # does not exist yet the first time this line is read. Failing there would mean the
+    # scenario could not be syntax-checked; an empty id resolves to no plan, and the play
+    # refuses a run that named none in its first task.
+    basewright_plan_id: >-
+      {{ lookup('file', lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/facts/plan_id',
+                errors='ignore') | default('', true) | trim }}
     common_secret_dir: >-
       {{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/secrets
     # The plan a container produces carries warnings -- the write-ahead log shares a mount

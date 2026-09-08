@@ -12,14 +12,31 @@
 # the one thing it might have been tempted to write -- a probe file, to prove the backup
 # path can be written to -- is asked of the kernel instead.
 #
-# One input, the plan. There is no --host and no engine name: the plan says which machine
-# it was built for and which engine runs on it, and this reads both out of it.
+# One input, the plan, and §12 lets it be named the way an operator thinks: by the instance
+# rather than by an id. `Basewright: Verify` takes a host and an instance name, the store
+# says which plan that instance was applied from, and the rest of this is the same either
+# way. Somebody asking whether a database is what it should be knows which database they
+# mean; expecting them to know the id of a plan somebody else approved would be the tool
+# asking the operator to do its filing.
+#
+# No engine name anywhere here: the plan says which machine it was built for and which
+# engine runs on it, and this reads both out of it.
 - name: Verify an instance against the plan it came from
   hosts: "{{ basewright_hosts | default('all') }}"
   gather_facts: true
 
   vars:
-    basewright_plan_path: "{{ basewright_plan_file | mandatory }}"
+    basewright_plan_store: "{{ playbook_dir }}/../../plans"
+    # Named however it was named, resolved to one path here so that everything below reads
+    # the plan the same way.
+    basewright_named_instance: "{{ basewright_instance | default('') }}"
+    basewright_plan_path: >-
+      {{ basewright_plan_file | default(
+           basewright_plan_store ~ '/plans/' ~ (
+             basewright_plan_id | default(
+               lookup('file', basewright_plan_store ~ '/instances/' ~ inventory_hostname
+                      ~ '/' ~ basewright_named_instance) | trim, true)
+           ) ~ '.json', true) }}
     basewright_plan: "{{ lookup('file', basewright_plan_path) | from_json }}"
     # Where the reading lands, on the control node rather than on the target. An instance
     # is not asked to keep a record of having been inspected, and the verb that judges the
@@ -28,6 +45,18 @@
     basewright_observation_path: "{{ basewright_observation_dir }}/{{ inventory_hostname }}.json"
 
   pre_tasks:
+    - name: Insist on being told which instance to verify
+      ansible.builtin.assert:
+        that: >-
+          (basewright_plan_file is defined) or (basewright_plan_id is defined)
+          or (basewright_named_instance | length > 0)
+        fail_msg: >-
+          Give this an instance name, with -e basewright_instance=..., and it will ask
+          the store which plan this host was applied from. A plan id or a path work too, and
+          are what somebody running this by hand usually has.
+        success_msg: verifying against {{ basewright_plan_path }}
+      delegate_to: localhost
+
     # The same check apply makes, in the same words, by the same tool. A plan whose id no
     # longer matches its content has been edited since somebody approved it, and verifying
     # an instance against an edited plan would produce a report saying it matches something

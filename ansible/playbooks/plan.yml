@@ -1,0 +1,94 @@
+---
+# The artifact, produced against a live host and kept where somebody else can find it.
+# Semaphore runs this; it does not run the CLI (ADR-0020).
+#
+# The plan is the centre of the product and it is a file. What this playbook adds to the
+# verb is the two ends: the facts come off a real machine rather than a fixture, and the
+# plan lands in the store under its own id, so the person who applies it can be somebody
+# other than the person who produced it (§12). That separation is a feature.
+#
+# Nothing here changes the target. Preflight runs again inside the plan step -- the same
+# rules, against the same document -- and a block ends the run with a refusal instead of a
+# plan. There is no partial plan and nothing produces one.
+- name: Produce a plan for a host, and keep it
+  hosts: "{{ basewright_hosts | default('all') }}"
+  gather_facts: true
+
+  vars:
+    basewright_engine: "{{ basewright_engine_name | mandatory }}"
+    basewright_facts_dir: "{{ playbook_dir }}/../../facts"
+    basewright_facts_path: "{{ basewright_facts_dir }}/{{ inventory_hostname }}.json"
+    # Where plans are kept between the person who produces one and the person who applies
+    # it. A directory, and a durable one: under Semaphore this is a volume that outlives
+    # the task, which is what makes an id printed in one task log worth anything in
+    # another.
+    basewright_plan_store: "{{ playbook_dir }}/../../plans"
+
+  tasks:
+    - name: Read what the host is
+      ansible.builtin.include_role:
+        name: gather
+      vars:
+        gather_output_dir: "{{ basewright_facts_dir }}"
+        gather_engine: "{{ basewright_engine }}"
+        gather_engine_version: "{{ basewright_version | default(omit) }}"
+        gather_report: false
+
+    # `--json` writes the artifact to stdout and the line saying where it was kept to
+    # stderr, so the two do not have to be told apart afterwards. Read rather than raised,
+    # for the same reason as preflight: a refusal is what an operator came for, and it has
+    # to reach the task log.
+    - name: Size it, lay it out, and keep it under its own id
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli plan
+          --facts {{ basewright_facts_path | quote }}
+          --engine {{ basewright_engine | quote }}
+          --store {{ basewright_plan_store | quote }}
+          {{ ('--engine-version ' ~ basewright_version | quote) if basewright_version is defined
+             else '' }}
+          {{ ('--instance ' ~ basewright_instance | quote) if basewright_instance is defined
+             else '' }}
+          {{ ('--environment ' ~ basewright_environment | quote)
+             if basewright_environment is defined else '' }}
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      register: basewright_planned
+
+    - name: Say what was decided, or why nothing was
+      ansible.builtin.debug:
+        msg: >-
+          {{ basewright_planned.stderr_lines
+             + (basewright_planned.rc == 0) | ternary([], basewright_planned.stdout_lines) }}
+
+    - name: A host that cannot carry the instance gets a refusal rather than a plan
+      ansible.builtin.assert:
+        that: basewright_planned.rc == 0
+        fail_msg: >-
+          No plan was produced for {{ inventory_hostname }}, and nothing produces one. The
+          report above names the rule that blocked and what would have to change.
+        success_msg: >-
+          {{ basewright_planned.stderr | trim }}
+
+    # The id, on its own line, because it is the whole output of this step as far as the
+    # next one is concerned: the Apply template takes a plan id and nothing else.
+    - name: Render the plan for whoever has to approve it
+      ansible.builtin.command:
+        cmd: >-
+          {{ ansible_playbook_python }} -m basewright.cli plan
+          --plan-id {{ basewright_plan_id | quote }}
+          --store {{ basewright_plan_store | quote }}
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      register: basewright_rendered
+      vars:
+        basewright_plan_id: "{{ (basewright_planned.stdout | from_json).plan_id }}"
+
+    - name: Read it, then approve it or do not
+      ansible.builtin.debug:
+        msg: >-
+          {{ basewright_rendered.stdout_lines
+             + ['', 'Apply this with plan id ' ~ (basewright_planned.stdout | from_json).plan_id] }}

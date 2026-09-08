@@ -1,6 +1,6 @@
 # Status
 
-What is actually merged, what is placeholder, and what is still missing. Kept accurate on
+What is actually merged, what was decided, and what is still missing. Kept accurate on
 purpose: an overstated status section is the fastest way to lose a technical reader.
 
 Last reviewed: 2026-09-04.
@@ -11,10 +11,19 @@ Last reviewed: 2026-09-04.
 | -------------- | ----------------------------------------------------------- | ----------- |
 | **Foundation** | Schema, loader, fact model, gate engine, planner, report, CI | complete    |
 | **Phase A**    | PostgreSQL on Debian/Ubuntu, end to end                     | complete    |
-| **Phase B**    | RHEL/Rocky, Semaphore templates, warning acknowledgement, plan storage | not started |
+| **Phase B**    | Semaphore templates, plan storage, warning acknowledgement, runbook | complete    |
 | **Phase C**    | A second engine, added without touching `basewright/`       | not started |
 | **Phase D**    | Windows and SQL Server                                      | not started |
 | **Phase E**    | Audit trail, plan diff against a live host, signed releases | not started |
+
+**Phase B as the brief writes it also contains RHEL and Rocky, and this repository does not
+ship them.** The row above says what was built rather than what was listed, and the
+difference is deliberate: `profiles/postgresql/` declares the Debian family because that is
+the family two molecule scenarios provision on every pull request, and declaring another
+before it is tested would be a claim rather than a fact. Adding it is a
+`support-matrix.yml` entry, a `packages.yml` entry and a scenario -- no core change, which
+is the point of engines being data (ADR-0002). Until somebody runs that scenario green, the
+support matrix says Debian and means it.
 
 ## Foundation, in detail
 
@@ -23,7 +32,7 @@ Last reviewed: 2026-09-04.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0025           | done        |
+| Architecture decision records 0001–0026           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
@@ -48,6 +57,10 @@ Last reviewed: 2026-09-04.
 | Exit codes, as a documented and tested set        | done        |
 | `apply`, and the roles that execute a plan        | done        |
 | `verify`, and the role that reads an instance     | done        |
+| A playbook per verb, which is what Semaphore runs | done        |
+| The plan store, and finding a plan by its id      | done        |
+| Semaphore template definitions and a setup guide  | done        |
+| `docs/dev/runbook.md`                             | done        |
 
 ## The loop closes
 
@@ -62,11 +75,14 @@ the plan's back and insists the tool goes red -- exactly `2`, and naming the par
 because a verify that only ever passes has been shown to agree with a correct instance and
 nothing more.
 
-Two things are still true and worth saying in the same breath. **The numbers in the profile
-are upstream defaults rather than the estate's policy**, all seven of them, and the table
-further down says which is which. And **the interface is missing**: `deploy/semaphore/` is
-empty, so the four templates of §12 that would let anybody run any of this without a shell
-are Phase B.
+**Phase B is complete too, and with it the interface.** `deploy/semaphore/` holds the four
+template definitions and a setup guide, plans are kept in a store and found again by id, and
+`docs/dev/runbook.md` is what to do when a task goes red. Provisioning a database is a form
+somebody fills in rather than a command somebody remembers.
+
+What is left out of Phase B is deliberate and named below: RHEL and Rocky are not supported,
+because the profile declares only the family that is tested and declaring another before it
+is tested would be a claim rather than a fact.
 
 ## Collecting from a live host
 
@@ -190,8 +206,11 @@ What is worth knowing about the rest:
   statement that sets it goes in over stdin, dollar-quoted so there is nothing to escape,
   and a test asserts that every task touching the value is `no_log` and that none of them
   puts it in argv.
-- **The secret store is a seam.** Semaphore's own store is the real target and arrives with
-  the Semaphore templates in Phase B; a container needs one now. So the sink is chosen by a
+- **The secret store is a seam, and the second implementation did not arrive.** Semaphore's
+  own store is the real target. The templates shipped and this did not, so on a Semaphore
+  installation the generated passwords land on the Semaphore host rather than in its secret
+  store -- named again under known gaps, because it is the largest single thing left
+  undone. So the sink is chosen by a
   variable, there is one implementation -- a file on the control node, mode 0600, at the
   location the plan names -- and the second is a file beside the first rather than an edit
   to everything that calls it.
@@ -359,7 +378,8 @@ what the profile's titles claim rather than gaps left unsaid.
 - **The connection it proves is over the local socket, as the service account.** That is
   authentication -- by the operating system rather than by a password -- and it proves the
   instance is serving. It is not a password-authenticated connection over TCP, and proving
-  that means verify reading the secret store, which arrives with the Semaphore templates.
+  that means verify reading the secret store, and the binding to Semaphore's own is the one
+  thing the templates shipped without.
 - **The port kind judges the port and not the address**, because the plan carries no listen
   address to compare one against. The address is asked by the profile, as an expression, and
   a profile that did not ask would not have it checked. Putting a planned listen address in
@@ -368,6 +388,76 @@ what the profile's titles claim rather than gaps left unsaid.
   the brief says "no default or empty administrative password", and observing the first half
   of that means guessing passwords against a live instance. A verification step that attacks
   the thing it is verifying is a worse idea than the gap it would close.
+
+## Operating it
+
+Semaphore is the interface and there is no other one (ADR-0005). `deploy/semaphore/` ships
+the four template definitions as JSON and a setup guide, and `docs/dev/runbook.md` is what
+to do when one of them goes red.
+
+Two playbooks arrived with them. §14 has listed `preflight.yml` and `plan.yml` since the
+first commit and neither existed: every verb had been driven by the CLI over a document, and
+the two that needed a live host had been driven by hand. Semaphore runs playbooks and not
+the CLI (ADR-0020), so a Preflight template with no `preflight.yml` behind it is a template
+that cannot run.
+
+### The plan store
+
+§12 asks for plans in a durable location so that Apply can be run by somebody other than
+whoever produced the plan, and calls that separation a feature. `basewright/store.py` is it,
+and it is two things.
+
+- **Plans addressed by content**, at `plans/<plan_id>.json`. A plan id is a digest of the
+  plan's own content (ADR-0017), so the name and the checksum are the same string: an id
+  copied out of a task log into a change request and back into a survey field is still a
+  check that the artifact has not moved. Writing a plan that is already there is a no-op
+  rather than an overwrite, because by construction it is the same bytes.
+- **One pointer per instance**, at `instances/<host>/<instance>`, holding the id of the plan
+  last applied there.
+
+**The pointer is what §12 forces**, and it was worth asking about before building. That
+section gives the Verify template a host and an instance name and no plan id -- so something
+has to know which plan an instance is running, and the alternative was to add a third field
+to a template §12 specifies with two. §12 is on the list of decisions that win, so the
+pointer exists.
+
+**It is not an audit trail.** One line, overwritten on every apply, no history and no who.
+Those are Phase E, and half of them would look like a record while answering none of the
+questions a record is asked. What this answers is exactly one question -- which plan is this
+instance supposed to match -- and that is the question verify needs answered.
+
+**Reading the pointer is Python's and writing it is Ansible's**, which is ADR-0008 at its
+smallest. Apply asks `basewright_pointer` where the note goes and then writes the line
+itself: every part of that path comes from a name somebody typed into a survey field, so
+building it is a question with a wrong answer, and writing a line into a file is not. A
+plan id shaped like somewhere else on the filesystem is refused rather than tidied into
+something it did not say.
+
+**A plan the store has not got exits 64, not 2.** Nothing was read, so nothing was decided
+and there is no report to read -- the same answer `plan --from nowhere.json` gets. The
+refusal lists what the store does hold, because the failure it is read after is almost
+always a typo or the wrong store and the two look identical until somebody sees the
+difference.
+
+### Apply takes a plan id and derives the host
+
+Its template has no host field, and that is not an omission. A plan is built from one
+machine's facts and refuses to be applied to another, so the host is in the artifact; asking
+for it again would be asking an operator to repeat something the plan carries and to be the
+one who gets it wrong. The playbook resolves `hosts:` out of the plan, and
+`basewright_hosts` still overrides it for somebody running it by hand.
+
+### What the templates do not carry
+
+- **Path overrides**, which §12 lists as a Plan survey variable. There is nothing behind
+  one: the layout comes from `layout.yml` in the profile, and a path is a decision reviewed
+  in a pull request rather than typed into a form by whoever is provisioning that afternoon.
+  An estate that wants different paths changes one file. This is a deviation from §12 and it
+  is written down here rather than left to be discovered.
+- **A binding to Semaphore's own secret store.** The sink is a role variable and the
+  implementation that ships is a file with mode 0600 on the control node, so on a Semaphore
+  installation the generated passwords land on the Semaphore host. That is somewhere to know
+  about rather than somewhere to leave them, and closing it is a variable and a small role.
 
 ## Exit codes
 
@@ -404,42 +494,59 @@ to the same test and came out the other way: a report rendered from a committed 
 deterministic and ASCII, so it is captured, and the readings it is captured from came off
 the container that scenario provisioned.
 
-## The first profile, and the seven values it had to assume
+## The first profile, and the seven values it decides
 
 `profiles/postgresql/` ships. It is the first thing in this repository that describes a real
 engine, and eight declarative files is all of it: nothing under `basewright/` knows the word
 PostgreSQL, and a test scans every line to keep that true.
 
-§21 of the brief names seven pieces of information that cannot be invented and have to come
-from the team, and none of them has arrived. It also says what to do in the meantime: ship
-reasonable upstream defaults, keep them in `profiles/`, and mark them here. That is what the
-table below is. **Every row is an assumption, not a policy**, and every one of them is a
-single value in a reviewable YAML file with the argument for it written beside it.
+§21 of the brief names seven pieces of information it says cannot be invented. This
+repository decides all seven ([ADR-0026](../adr/0026-the-profiles-defaults-are-decisions.md)),
+and the table below is those decisions rather than a list of things it is waiting for.
 
-| §21 | What it needs | What ships, and why that |
-| --- | ------------- | ------------------------ |
+They were placeholders for four sessions, and stopping calling them that is the point. Six
+of the seven turned out to be forced rather than chosen — the paths are where the vendor's
+packaging puts things, the account is the one the package creates, the encoding is the only
+defensible answer, the families are the ones that are tested — and a row marked provisional
+is a row a reviewer skips, so the estate that deploys this would never notice it had an
+opinion to give.
+
+**Every one is a single value in a reviewable YAML file**, with the argument for it written
+beside it, and changing one is a line rather than a fork.
+
+| §21 | The decision | Why that, and what changes it |
+| --- | ------------ | ----------------------------- |
 | 1 | Path conventions | The upstream Debian layout, exactly: `/var/lib/postgresql/<version>/<cluster>`, the log under `/var/log/postgresql`. Not a tidier scheme of our own, so that `pg_lsclusters` and the packaged logrotate keep working and a DBA finds things where every other cluster keeps them. |
 | 2 | Service account | `postgres`, group `postgres`, home `/var/lib/postgresql`, shell `/bin/bash`. **Not created by Basewright**: the vendor package makes it, and an account made first would take whatever uid was free rather than the one the package's files are owned by. |
 | 3 | Locale and encoding | `en_US.UTF-8` and `UTF8`, the locale in `profile.yml` because a shared rule blocks a host without it, the encoding in `apply.yml` because creating the instance is what consumes it. The locale is the one thing on this page a European estate is most likely to change; the encoding is the one nobody should. |
 | 4 | Authentication rules | Loopback only, `scram-sha-256` everywhere, `peer` for the service account over the local socket, and no rule anywhere that grants access without a password. A new instance is reachable only from the machine it runs on; widening it is a decision somebody makes on purpose. |
 | 5 | Minimum resources | 2 cores, 2 GB, and per path: data 20 GB, wal 10 GB, log 2 GB, backup 50 GB. **These are blocks with no run-time override.** They are floors rather than recommendations: a real production server clears all of them without noticing, and they exist to catch a request pointed at a machine nobody meant to provision. |
-| 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. RHEL is Phase B, and declaring it before it is tested would be a claim rather than a fact. |
+| 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. Not because RHEL is hard, but because these are the two CI provisions on every pull request: declaring a family before it is tested would be a claim rather than a fact. Adding one is a support-matrix entry, a packages entry and a scenario. |
 | 7 | Port convention | 5432, one instance per host. A per-instance allocation scheme would change `defaults.port` and nothing else. |
 
-Two of those deserve a second look before anybody relies on them.
+**Two of the seven are the ones an estate is most likely to change**, and saying they are
+decisions without saying which are contentious would be the same evasion in a different
+direction.
 
 **The backup path is deliberately not `/var/backups`.** That is where the distribution keeps
 a few kilobytes of dpkg state, and it lands on the root filesystem of every machine, so a
-50 GB floor there would refuse almost every host for the wrong reason. The default is
+50 GB floor there would refuse almost every host for the wrong reason. The decision is
 `/backup/postgresql/<instance>` — a mount somebody provisioned on purpose — and a host that
-has not got one is refused rather than quietly given the root filesystem. What the estate
-actually calls that mount is the open question; that it is a mount is the assertion.
+has not got one is refused rather than quietly given the root filesystem. What an estate
+calls that mount is the half worth arguing about; that it is a mount is the assertion, and
+it is the assertion worth keeping.
 
 **The write-ahead log defaults to the upstream location inside the data directory**, so on
-any host without a path override the profile warns that the two share a mount. That warning
-is true, it is about the default rather than about the host, and acknowledging it is the
-record that somebody looked. If the estate's convention gives the log its own mount, one
-line in `layout.yml` changes and the warning stops.
+any host without a path override the profile warns that the two share a mount. **That
+warning fires on every plan**, which is the strongest argument against it: a warning that is
+always true is a warning nobody reads, and ADR-0004 rests on warnings being read.
+
+It stays anyway, and the reason is that the alternative is worse. Giving the log its own
+mount by default would make every host without one **refuse** rather than warn — a blocking
+rule inherited by an estate that never asked for it. A warning acknowledged once per plan is
+the smaller cost, and the acknowledgement is the record that somebody looked. If the
+estate's convention gives the log its own mount, one line in `layout.yml` changes and the
+warning stops.
 
 ### What the profile still cannot answer
 
@@ -464,6 +571,21 @@ line in `layout.yml` changes and the warning stops.
 
 ## Known gaps
 
+These are the ones worth knowing about before relying on this. None of them is a surprise
+and none of them is being worked around; each is either a decision with a record or a thing
+somebody would have to build.
+
+- **Generated passwords land on the control node.** The secret sink is a role variable and
+  the one implementation that ships writes a file with mode 0600 beside the run. Under
+  Semaphore that means the Semaphore host, not Semaphore's own secret store, which is where
+  they belong. Closing it is a variable and a small role, and it is the largest single thing
+  left undone.
+- **RHEL and Rocky are not supported**, and the support matrix says so rather than implying
+  otherwise. The profile declares the family CI provisions on every pull request.
+- **The store keeps no history.** One plan per id and one pointer per instance, overwritten.
+  Who applied what and when is Phase E.
+- **Path overrides are not a survey field**, which is a deviation from §12 and is discussed
+  under what the templates do not carry.
 - `gather` and `preflight` read a facts document, and `verify` reads a plan and an
   observation. In every case a playbook is what produced the document and the CLI is what
   reads it, which is the split rather than a stage of it

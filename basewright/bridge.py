@@ -13,19 +13,26 @@ Six questions, and each earns its place by being one a template could get wrong:
 * **Where is the template this plan names?** Finding a file the plan refers to by name.
 * **What did this instance turn out to be?** Putting the envelope round a reading.
 * **Which sockets is this process holding?** Parsing what ``ss`` printed.
+* **Where does this instance's pointer go in the store?** Building a path from a plan.
 
 The template one is the only place anything on the applying side reads outside the plan,
 and it reads a template rather than a value. Every value poured into that template comes
 from the plan; what is looked up is the shape it is poured into (ADR-0022).
 
-The last two are verify's, and neither knows an engine. The role that calls them does: it
-is the one that read its own instance and turned what it said into the contract's terms,
+The two before it are verify's, and neither knows an engine. The role that calls them does:
+it is the one that read its own instance and turned what it said into the contract's terms,
 and it is the one that knows what its own process is called (ADR-0024).
+
+The last is apply's, and it is where the split is easiest to see: this decides the path and
+Ansible writes the file. Every part of that path comes from a name somebody typed into a
+survey field, so deciding it is a question with a wrong answer -- and writing a line into a
+file is not.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from basewright.drift import differences
@@ -33,9 +40,10 @@ from basewright.facts.collect import document
 from basewright.facts.normalize import normalize
 from basewright.facts.repositories import repositories
 from basewright.profiles.locate import template_for
+from basewright.store import instance_path
 from basewright.verify.collect import observation, sockets_held
 
-__all__ = ["FILTERS", "drifted", "template"]
+__all__ = ["FILTERS", "drifted", "pointer", "template"]
 
 
 def drifted(plan: Mapping[str, Any], collected: Mapping[str, Any]) -> list[str]:
@@ -61,6 +69,20 @@ def template(plan: Mapping[str, Any], name: str) -> str:
     return str(template_for(plan["profile"]["engine"], name))
 
 
+def pointer(plan: Mapping[str, Any], store: str) -> str:
+    """Where the store keeps the note saying which plan this instance is running.
+
+    The host and the instance come out of the plan rather than being passed in, because
+    apply reads the plan and nothing else -- and because a pointer written under a name the
+    plan does not use would be a pointer verify never finds.
+
+    Only the path. Writing the file is the playbook's, which is the whole arrangement: a
+    path assembled out of typed-in names is a question somebody can get wrong, and the write
+    that follows is not.
+    """
+    return str(instance_path(Path(store), plan["request"]["host"], plan["request"]["instance"]))
+
+
 #: Everything Ansible is allowed to call, and the only way in. A filter added here is a
 #: question somebody decided a role may ask; anything not here is a judgement a role would
 #: be making on its own.
@@ -71,4 +93,5 @@ FILTERS: Mapping[str, Callable[..., Any]] = {
     "basewright_template": template,
     "basewright_observation": observation,
     "basewright_sockets": sockets_held,
+    "basewright_pointer": pointer,
 }
