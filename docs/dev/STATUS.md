@@ -1,6 +1,6 @@
 # Status
 
-What is actually merged, what is placeholder, and what is still missing. Kept accurate on
+What is actually merged, what was decided, and what is still missing. Kept accurate on
 purpose: an overstated status section is the fastest way to lose a technical reader.
 
 Last reviewed: 2026-09-04.
@@ -206,8 +206,11 @@ What is worth knowing about the rest:
   statement that sets it goes in over stdin, dollar-quoted so there is nothing to escape,
   and a test asserts that every task touching the value is `no_log` and that none of them
   puts it in argv.
-- **The secret store is a seam.** Semaphore's own store is the real target and arrives with
-  the Semaphore templates in Phase B; a container needs one now. So the sink is chosen by a
+- **The secret store is a seam, and the second implementation did not arrive.** Semaphore's
+  own store is the real target. The templates shipped and this did not, so on a Semaphore
+  installation the generated passwords land on the Semaphore host rather than in its secret
+  store -- named again under known gaps, because it is the largest single thing left
+  undone. So the sink is chosen by a
   variable, there is one implementation -- a file on the control node, mode 0600, at the
   location the plan names -- and the second is a file beside the first rather than an edit
   to everything that calls it.
@@ -375,7 +378,8 @@ what the profile's titles claim rather than gaps left unsaid.
 - **The connection it proves is over the local socket, as the service account.** That is
   authentication -- by the operating system rather than by a password -- and it proves the
   instance is serving. It is not a password-authenticated connection over TCP, and proving
-  that means verify reading the secret store, which arrives with the Semaphore templates.
+  that means verify reading the secret store, and the binding to Semaphore's own is the one
+  thing the templates shipped without.
 - **The port kind judges the port and not the address**, because the plan carries no listen
   address to compare one against. The address is asked by the profile, as an expression, and
   a profile that did not ask would not have it checked. Putting a planned listen address in
@@ -517,7 +521,7 @@ beside it, and changing one is a line rather than a fork.
 | 3 | Locale and encoding | `en_US.UTF-8` and `UTF8`, the locale in `profile.yml` because a shared rule blocks a host without it, the encoding in `apply.yml` because creating the instance is what consumes it. The locale is the one thing on this page a European estate is most likely to change; the encoding is the one nobody should. |
 | 4 | Authentication rules | Loopback only, `scram-sha-256` everywhere, `peer` for the service account over the local socket, and no rule anywhere that grants access without a password. A new instance is reachable only from the machine it runs on; widening it is a decision somebody makes on purpose. |
 | 5 | Minimum resources | 2 cores, 2 GB, and per path: data 20 GB, wal 10 GB, log 2 GB, backup 50 GB. **These are blocks with no run-time override.** They are floors rather than recommendations: a real production server clears all of them without noticing, and they exist to catch a request pointed at a machine nobody meant to provision. |
-| 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. RHEL is Phase B, and declaring it before it is tested would be a claim rather than a fact. |
+| 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. Not because RHEL is hard, but because these are the two CI provisions on every pull request: declaring a family before it is tested would be a claim rather than a fact. Adding one is a support-matrix entry, a packages entry and a scenario. |
 | 7 | Port convention | 5432, one instance per host. A per-instance allocation scheme would change `defaults.port` and nothing else. |
 
 **Two of the seven are the ones an estate is most likely to change**, and saying they are
