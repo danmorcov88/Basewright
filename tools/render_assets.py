@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -625,6 +626,7 @@ DECISIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("0004", "two severities, no override"),
             ("0012", "starts at a reachable host"),
             ("0013", "backups belong elsewhere"),
+            ("0026", "the profile's values are decisions"),
             ("0025", "an unasked check is not a pass"),
         ),
     ),
@@ -944,6 +946,47 @@ VERIFY_LOOP: tuple[tuple[str, str, str], ...] = (
     ("observation.json", "what it said, in a closed contract", "written on the control node"),
     ("basewright", "compares that with the plan, and reports", "has never heard of an engine"),
 )
+
+
+#: Where the template definitions live. The picture below is drawn from them rather than
+#: written beside them, so a survey field added to a template and not to the documentation
+#: is not a thing that can happen: the file *is* the documentation, and this renders it.
+SEMAPHORE = ROOT / "deploy" / "semaphore"
+
+
+def semaphore_templates() -> tuple[tuple[str, str, str], ...]:
+    """The four templates, as the definitions Semaphore is given actually declare them."""
+    rows: list[tuple[str, str, str]] = []
+    for path in sorted(SEMAPHORE.glob("0[1-9]-*.json")):
+        template = json.loads(path.read_text(encoding="utf-8"))
+        asked = ", ".join(var["title"].lower() for var in template["survey_vars"])
+        # The name without its prefix. Every one of them carries it, and four rows repeating
+        # the same word is four rows of column spent saying nothing.
+        name = template["name"].split(": ", 1)[-1]
+        rows.append((name, asked, Path(template["playbook"]).name))
+    return tuple(rows)
+
+
+def render_semaphore_templates(theme: Theme) -> str:
+    """The operator's whole interface: four forms, and what each one asks for."""
+    return render_table(
+        theme,
+        title="The four templates, and what each one asks the operator for",
+        subtitle=(
+            "Semaphore is the interface and there is no other one (ADR-0005). Drawn from "
+            "deploy/semaphore/, so a field added there arrives here."
+        ),
+        headings=("TEMPLATE", "SURVEY FIELDS", "RUNS"),
+        rows=semaphore_templates(),
+        footer=(
+            "Apply takes a plan id and no host: the plan was built from one machine's facts "
+            "and refuses to be applied to another, so the host is in the artifact already.",
+            "Verify takes a host and an instance and no plan id: the store remembers which "
+            "plan that instance was applied from. Only apply changes anything.",
+        ),
+        columns=(20, 130, 470),
+        width=940,
+    )
 
 
 def render_verify_loop(theme: Theme) -> str:
@@ -1281,6 +1324,18 @@ CAPTURES: tuple[Capture, ...] = (
         ),
     ),
     Capture(
+        "plan-not-in-store",
+        "a plan id the store has not got",
+        (
+            "basewright.cli",
+            "plan",
+            "--plan-id",
+            "000000000000",
+            "--store",
+            "test/fixtures/store",
+        ),
+    ),
+    Capture(
         "profile-refused",
         "a profile that does not hold up",
         ("basewright.profiles", "test/fixtures/profiles/malformed"),
@@ -1324,6 +1379,7 @@ def build() -> dict[Path, str]:
         assets[ASSETS / f"reachability-{suffix}.svg"] = render_reachability(theme)
         assets[ASSETS / f"apply-phases-{suffix}.svg"] = render_apply_phases(theme)
         assets[ASSETS / f"verify-loop-{suffix}.svg"] = render_verify_loop(theme)
+        assets[ASSETS / f"semaphore-templates-{suffix}.svg"] = render_semaphore_templates(theme)
         for entry in CAPTURES:
             assets[ASSETS / f"{entry.name}-{suffix}.svg"] = render_terminal(
                 entry.title, printed[entry.name], theme

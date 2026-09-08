@@ -1,0 +1,34 @@
+{
+  "name": "Basewright: Apply",
+  "app": "ansible",
+  "type": "",
+  "playbook": "ansible/playbooks/apply.yml",
+  "description": "Turn a plan into a running instance. The only template that changes a machine. It takes a plan id and no host: the plan says which machine it was built for, and asking again would be asking somebody to repeat something the artifact already carries and to get it wrong. Refuses a plan that has been edited, a host that has drifted, and warnings nobody has acknowledged.",
+  "arguments": "[]",
+  "allow_override_args_in_task": false,
+  "project_id": 0,
+  "inventory_id": 0,
+  "repository_id": 0,
+  "environment_id": 0,
+  "survey_vars": [
+    {
+      "name": "basewright_plan_id",
+      "title": "Plan id",
+      "description": "The id the Plan task printed. It is a digest of the plan's own content, so it is also a checksum: a plan that has been edited since it was approved no longer answers to this name.",
+      "type": "",
+      "required": true,
+      "values": []
+    },
+    {
+      "name": "basewright_accept_warnings",
+      "title": "Warnings have been read",
+      "description": "A plan with warnings will not apply until somebody says they have read them. There is no equivalent for a block and there never will be.",
+      "type": "enum",
+      "required": true,
+      "values": [
+        { "name": "No -- stop if there are any", "value": "false" },
+        { "name": "Yes -- I have read them", "value": "true" }
+      ]
+    }
+  ]
+}

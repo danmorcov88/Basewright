@@ -50,6 +50,7 @@ from basewright.report.preflight import render_preflight
 from basewright.report.problems import REPORT_WIDTH, display, render_problems, wrapped
 from basewright.report.verify import render_verify
 from basewright.request import Request, RequestError, resolve_request
+from basewright.store import StoreError, applied, keep, plan_path, read
 from basewright.units import render_bytes
 from basewright.verify import (
     InvalidObservationError,
@@ -144,6 +145,14 @@ _PROFILE_HELP = "Path to a profile directory, for one that is not installed unde
 #: id needs a plan store and belongs to a later phase; this takes a path.
 _FROM_HELP = "Render a plan that already exists, instead of producing one."
 
+#: Where plans are kept between the person who produces one and the person who applies it
+#: (§12). The id printed by the plan step is enough to find the artifact again, which is
+#: what lets the two be different people on different days.
+_STORE_HELP = "Directory the plans are kept in. Written to by plan, read by apply and verify."
+_PLAN_ID_HELP = "Plan id to read out of the store, instead of a path."
+_VERIFY_HOST_HELP = "Host whose instance to verify, looked up in the store instead of an id."
+_VERIFY_INSTANCE_HELP = "Instance on that host. Used with --host."
+
 #: What verify compares. Two documents and no host: the plan is the promise, and the
 #: observation is what ansible/playbooks/verify.yml read off the running instance.
 _PLAN_HELP = "Path to the plan the instance was built from."
@@ -186,8 +195,17 @@ def _add_arguments(parser: argparse.ArgumentParser, verb: str) -> None:
         # reaches: the plan is what was promised and the observation is what an engine's
         # role read off the running instance (ADR-0024). There is no --host here for the
         # same reason there is none on any other verb.
-        parser.add_argument("--plan", metavar="PATH", type=Path, help=_PLAN_HELP)
+        # Three ways to name the plan, and the third is the one an operator uses: §12 gives
+        # the Verify template a host and an instance name rather than a plan id, because
+        # somebody asking whether a database is what it should be knows which database they
+        # mean and has no reason to know the id of a plan somebody else approved.
+        named = parser.add_mutually_exclusive_group()
+        named.add_argument("--plan", metavar="PATH", type=Path, help=_PLAN_HELP)
+        named.add_argument("--plan-id", dest="plan_id", metavar="ID", help=_PLAN_ID_HELP)
+        named.add_argument("--host", metavar="NAME", help=_VERIFY_HOST_HELP)
+        parser.add_argument("--instance", metavar="NAME", help=_VERIFY_INSTANCE_HELP)
         parser.add_argument("--observed", metavar="PATH", type=Path, help=_OBSERVED_HELP)
+        _add_store_argument(parser)
         _add_json_argument(parser)
         return
 
@@ -195,8 +213,21 @@ def _add_arguments(parser: argparse.ArgumentParser, verb: str) -> None:
     if verb in {"preflight", "plan"}:
         _add_request_arguments(parser)
     if verb == "plan":
-        parser.add_argument("--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP)
+        # A path and an id are the same request through two doors, so they are exclusive
+        # rather than resolved by a precedence rule nobody would remember.
+        existing = parser.add_mutually_exclusive_group()
+        existing.add_argument(
+            "--from", dest="from_plan", metavar="PATH", type=Path, help=_FROM_HELP
+        )
+        existing.add_argument("--plan-id", dest="plan_id", metavar="ID", help=_PLAN_ID_HELP)
+        _add_store_argument(parser)
     _add_json_argument(parser)
+
+
+def _add_store_argument(parser: argparse.ArgumentParser) -> None:
+    """Where plans are kept. Optional everywhere: the store is how Semaphore runs this, and
+    a path on the command line is how a person does."""
+    parser.add_argument("--store", metavar="DIR", type=Path, help=_STORE_HELP)
 
 
 def _add_json_argument(parser: argparse.ArgumentParser) -> None:
@@ -323,7 +354,7 @@ def plan(args: argparse.Namespace) -> int:
     that produces one: a host that cannot carry the instance is reported as refused, with
     the rule and the way out, rather than as a plan somebody might apply anyway.
     """
-    if args.from_plan is not None:
+    if args.from_plan is not None or args.plan_id is not None:
         return render_existing(args)
 
     prepared = _inputs(args, "plan")
@@ -349,8 +380,19 @@ def plan(args: argparse.Namespace) -> int:
         print(error, file=sys.stderr)
         return EXIT_REFUSED
 
+    written = rendered(artifact)
+    if args.store is not None:
+        try:
+            kept = keep(args.store, artifact, written)
+        except (StoreError, OSError) as error:
+            _refuse(f"basewright plan: the plan was produced and not kept: {error}")
+            return EXIT_USAGE
+        # On stderr, so that --json writes the artifact and nothing else to stdout. What
+        # somebody needs off this line is the id, which is what the apply step is given.
+        print(f"kept as {artifact['plan_id']} in {display(kept)}", file=sys.stderr)
+
     if args.as_json:
-        print(rendered(artifact), end="")
+        print(written, end="")
     else:
         print(render_plan(artifact))
     return EXIT_OK
@@ -364,6 +406,7 @@ def render_existing(args: argparse.Namespace) -> int:
     and the person about to approve it is entitled to be told that rather than to read
     the edited version as though it were the artifact.
     """
+    asked = "--from" if args.from_plan is not None else "--plan-id"
     conflicting = [
         name
         for name, value in (
@@ -376,18 +419,68 @@ def render_existing(args: argparse.Namespace) -> int:
     ]
     if conflicting:
         _refuse(
-            f"basewright plan: --from cannot be combined with {', '.join(conflicting)}. "
-            "Reading a plan and producing one are different jobs, and the file --from "
-            "names is already the machine-readable artifact."
+            f"basewright plan: {asked} cannot be combined with {', '.join(conflicting)}. "
+            "Reading a plan and producing one are different jobs, and the artifact being "
+            "read is already the machine-readable one."
         )
         return EXIT_USAGE
 
-    document = _read_plan(args.from_plan, "plan")
+    source = _plan_source(args, "plan")
+    if isinstance(source, int):
+        return source
+
+    document = _read_plan(source, "plan")
     if isinstance(document, int):
         return document
 
     print(render_plan(document))
     return EXIT_OK
+
+
+def _plan_source(args: argparse.Namespace, verb: str) -> Path | int:
+    """The file holding the plan, whether it was named by path or by id.
+
+    A plan id is the whole point of the store (§12): the person who applies a plan is not
+    the person who produced it, so what travels between them is the id printed in a task
+    log rather than a path on somebody's disk.
+    """
+    named: Path | None = args.from_plan if verb == "plan" else args.plan
+    if named is not None:
+        return named
+
+    wanted = "--plan-id" if args.plan_id is not None else "--host"
+    if args.store is None:
+        _refuse(
+            f"basewright {verb}: {wanted} needs --store, because it names a plan inside a "
+            f"store rather than a path. Name the directory plans are kept in."
+        )
+        return EXIT_USAGE
+
+    plan_id = args.plan_id
+    if plan_id is None:
+        if not args.instance:
+            _refuse(
+                f"basewright {verb}: --host needs --instance. A host runs one instance per "
+                f"name, and which one is being asked about is not a thing to guess at."
+            )
+            return EXIT_USAGE
+        try:
+            plan_id = applied(args.store, args.host, args.instance)
+        except StoreError as error:
+            _refuse(f"basewright {verb}: {error}")
+            return EXIT_USAGE
+
+    # 64 rather than 2, and the line is the same one `--from nowhere.json` falls on: a plan
+    # the store has not got was not read at all, so nothing has been decided and there is no
+    # report to read. A plan that *is* read and turns out to have been edited is the other
+    # answer, and it is reached below (ADR-0019).
+    try:
+        read(args.store, plan_id)
+    except StoreError as error:
+        _refuse(f"basewright {verb}: {error}")
+        return EXIT_USAGE
+
+    return plan_path(args.store, plan_id)
 
 
 def verify(args: argparse.Namespace) -> int:
@@ -399,15 +492,21 @@ def verify(args: argparse.Namespace) -> int:
     ``plan --from`` and by apply, because a verify report against an edited plan would be
     a proof that the instance matches something nobody approved.
     """
-    if args.plan is None or args.observed is None:
+    unnamed = args.plan is None and args.plan_id is None and args.host is None
+    if unnamed or args.observed is None:
         _refuse(
-            "basewright verify: --plan and --observed are both required. The observation "
-            "is written by ansible/playbooks/verify.yml, which reaches the instance; this "
-            "verb judges what it wrote against the plan the instance was built from."
+            "basewright verify: --observed, and one of --plan, --plan-id or --host, are "
+            "required. The observation is written by ansible/playbooks/verify.yml, which "
+            "reaches the instance; this verb judges what it wrote against the plan the "
+            "instance was built from."
         )
         return EXIT_USAGE
 
-    document = _read_plan(args.plan, "verify")
+    source = _plan_source(args, "verify")
+    if isinstance(source, int):
+        return source
+
+    document = _read_plan(source, "verify")
     if isinstance(document, int):
         return document
 

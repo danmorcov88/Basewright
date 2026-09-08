@@ -650,18 +650,24 @@ request. Then the scenario changes a parameter on the running instance behind th
 back and insists `verify` goes red, because a verify that only ever passes has not been
 shown to be looking.
 
-What that does not mean is that the numbers are settled. Seven conventions have to come
-from the estate — path layout, service account, locale, authentication rules, the minimum
-resources a production instance may run on, the OS families actually in use, and the port
-convention. None has arrived. `profiles/postgresql/` ships reasonable upstream defaults for
-all seven and [docs/dev/STATUS.md](docs/dev/STATUS.md) lists which is which, row by row,
-with the argument for each. **Every one of them is an assumption rather than a policy**,
-and each is a single value in a reviewable YAML file. The minimums in particular become
-block thresholds with no run-time override, so they have to be numbers somebody will defend
-in a review.
+Seven conventions had to be settled before a profile could describe a real engine — path
+layout, service account, locale, authentication rules, the minimum resources a production
+instance may run on, the OS families supported, and the port convention. **This repository
+decides all seven** ([ADR-0026](docs/adr/0026-the-profiles-defaults-are-decisions.md)), and
+[docs/dev/STATUS.md](docs/dev/STATUS.md) states each one with the argument for it and the
+line that changes it.
 
-Detail, and the placeholder values that still need real numbers from the estate, are in
-[docs/dev/STATUS.md](docs/dev/STATUS.md).
+Six of them are forced rather than chosen: the paths are where the vendor's packaging puts
+things, the account is the one the package creates, the encoding is the only defensible
+answer, the families are the ones that are tested. The minimums are the row that needed
+somebody willing to defend it, because they become block thresholds with no run-time
+override — 2 cores, 2 GB, and a floor per path.
+
+**An estate that disagrees changes a line, not a fork.** That is what engines-as-data buys:
+every one of the seven is a single value in a YAML file under `profiles/`, with the reasoning
+for the original still written beside it. The two most likely to be changed — what the backup
+mount is called, and whether the write-ahead log gets a mount of its own — are named as such
+on the status page rather than left to be discovered.
 
 ## What Basewright is not
 

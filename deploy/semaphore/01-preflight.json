@@ -1,0 +1,47 @@
+{
+  "name": "Basewright: Preflight",
+  "app": "ansible",
+  "type": "",
+  "playbook": "ansible/playbooks/preflight.yml",
+  "description": "Ask whether a host can carry the instance somebody wants, before anything is touched. Changes nothing. A blocking rule ends the task red, and the log names the rule, what was found, what was required, and what would have to change.",
+  "arguments": "[]",
+  "allow_override_args_in_task": false,
+  "project_id": 0,
+  "inventory_id": 0,
+  "repository_id": 0,
+  "environment_id": 0,
+  "survey_vars": [
+    {
+      "name": "basewright_hosts",
+      "title": "Host",
+      "description": "The host to read, as the inventory names it. One host, or an inventory group.",
+      "type": "",
+      "required": true,
+      "values": []
+    },
+    {
+      "name": "basewright_engine_name",
+      "title": "Engine",
+      "description": "Which database engine is being provisioned. The values are the directories under profiles/.",
+      "type": "enum",
+      "required": true,
+      "values": [{ "name": "PostgreSQL", "value": "postgresql" }]
+    },
+    {
+      "name": "basewright_version",
+      "title": "Engine version",
+      "description": "Leave empty to take the profile's default. A version somebody chose and a version nobody chose are different decisions, and one of the rules reads which it was.",
+      "type": "",
+      "required": false,
+      "values": []
+    },
+    {
+      "name": "basewright_instance",
+      "title": "Instance name",
+      "description": "Leave empty to take the profile's default. Names the cluster, its paths and its unit.",
+      "type": "",
+      "required": false,
+      "values": []
+    }
+  ]
+}

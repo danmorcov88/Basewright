@@ -1,0 +1,6 @@
+{
+  "name": "Basewright",
+  "description": "The values every Basewright template needs and no survey field should ask for. Attach this environment to all four templates.",
+  "project_id": 0,
+  "json": "{\"basewright_plan_store\": \"/opt/basewright/plans\"}"
+}

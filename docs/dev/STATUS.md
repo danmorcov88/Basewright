@@ -404,20 +404,28 @@ to the same test and came out the other way: a report rendered from a committed 
 deterministic and ASCII, so it is captured, and the readings it is captured from came off
 the container that scenario provisioned.
 
-## The first profile, and the seven values it had to assume
+## The first profile, and the seven values it decides
 
 `profiles/postgresql/` ships. It is the first thing in this repository that describes a real
 engine, and eight declarative files is all of it: nothing under `basewright/` knows the word
 PostgreSQL, and a test scans every line to keep that true.
 
-§21 of the brief names seven pieces of information that cannot be invented and have to come
-from the team, and none of them has arrived. It also says what to do in the meantime: ship
-reasonable upstream defaults, keep them in `profiles/`, and mark them here. That is what the
-table below is. **Every row is an assumption, not a policy**, and every one of them is a
-single value in a reviewable YAML file with the argument for it written beside it.
+§21 of the brief names seven pieces of information it says cannot be invented. This
+repository decides all seven ([ADR-0026](../adr/0026-the-profiles-defaults-are-decisions.md)),
+and the table below is those decisions rather than a list of things it is waiting for.
 
-| §21 | What it needs | What ships, and why that |
-| --- | ------------- | ------------------------ |
+They were placeholders for four sessions, and stopping calling them that is the point. Six
+of the seven turned out to be forced rather than chosen — the paths are where the vendor's
+packaging puts things, the account is the one the package creates, the encoding is the only
+defensible answer, the families are the ones that are tested — and a row marked provisional
+is a row a reviewer skips, so the estate that deploys this would never notice it had an
+opinion to give.
+
+**Every one is a single value in a reviewable YAML file**, with the argument for it written
+beside it, and changing one is a line rather than a fork.
+
+| §21 | The decision | Why that, and what changes it |
+| --- | ------------ | ----------------------------- |
 | 1 | Path conventions | The upstream Debian layout, exactly: `/var/lib/postgresql/<version>/<cluster>`, the log under `/var/log/postgresql`. Not a tidier scheme of our own, so that `pg_lsclusters` and the packaged logrotate keep working and a DBA finds things where every other cluster keeps them. |
 | 2 | Service account | `postgres`, group `postgres`, home `/var/lib/postgresql`, shell `/bin/bash`. **Not created by Basewright**: the vendor package makes it, and an account made first would take whatever uid was free rather than the one the package's files are owned by. |
 | 3 | Locale and encoding | `en_US.UTF-8` and `UTF8`, the locale in `profile.yml` because a shared rule blocks a host without it, the encoding in `apply.yml` because creating the instance is what consumes it. The locale is the one thing on this page a European estate is most likely to change; the encoding is the one nobody should. |
@@ -426,20 +434,29 @@ single value in a reviewable YAML file with the argument for it written beside i
 | 6 | OS families | Debian family only — Ubuntu 22.04 and 24.04, Debian 12. RHEL is Phase B, and declaring it before it is tested would be a claim rather than a fact. |
 | 7 | Port convention | 5432, one instance per host. A per-instance allocation scheme would change `defaults.port` and nothing else. |
 
-Two of those deserve a second look before anybody relies on them.
+**Two of the seven are the ones an estate is most likely to change**, and saying they are
+decisions without saying which are contentious would be the same evasion in a different
+direction.
 
 **The backup path is deliberately not `/var/backups`.** That is where the distribution keeps
 a few kilobytes of dpkg state, and it lands on the root filesystem of every machine, so a
-50 GB floor there would refuse almost every host for the wrong reason. The default is
+50 GB floor there would refuse almost every host for the wrong reason. The decision is
 `/backup/postgresql/<instance>` — a mount somebody provisioned on purpose — and a host that
-has not got one is refused rather than quietly given the root filesystem. What the estate
-actually calls that mount is the open question; that it is a mount is the assertion.
+has not got one is refused rather than quietly given the root filesystem. What an estate
+calls that mount is the half worth arguing about; that it is a mount is the assertion, and
+it is the assertion worth keeping.
 
 **The write-ahead log defaults to the upstream location inside the data directory**, so on
-any host without a path override the profile warns that the two share a mount. That warning
-is true, it is about the default rather than about the host, and acknowledging it is the
-record that somebody looked. If the estate's convention gives the log its own mount, one
-line in `layout.yml` changes and the warning stops.
+any host without a path override the profile warns that the two share a mount. **That
+warning fires on every plan**, which is the strongest argument against it: a warning that is
+always true is a warning nobody reads, and ADR-0004 rests on warnings being read.
+
+It stays anyway, and the reason is that the alternative is worse. Giving the log its own
+mount by default would make every host without one **refuse** rather than warn — a blocking
+rule inherited by an estate that never asked for it. A warning acknowledged once per plan is
+the smaller cost, and the acknowledgement is the record that somebody looked. If the
+estate's convention gives the log its own mount, one line in `layout.yml` changes and the
+warning stops.
 
 ### What the profile still cannot answer
 

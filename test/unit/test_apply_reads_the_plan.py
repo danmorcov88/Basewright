@@ -142,13 +142,26 @@ def test_the_only_thing_looked_up_outside_the_plan_is_a_template(path: Path) -> 
     assert not outside, f"{path.name} reads {sorted(outside)}, which the plan does not carry"
 
 
-def test_the_playbook_takes_one_input_and_it_is_a_plan(playbook: list[dict[str, Any]]) -> None:
-    play = playbook[0]
+@pytest.mark.parametrize("path", PLAYBOOKS, ids=lambda path: path.name)
+def test_the_playbook_takes_one_input_and_it_is_a_plan(path: Path) -> None:
+    """The plan can be named by path or by id -- and, for verify, by the instance running it
+    (§12). What may not happen is a run that starts without knowing which plan it is about.
 
-    assert "basewright_plan_file" in yaml.safe_dump(play["vars"])
-    assert "mandatory" in yaml.safe_dump(play["vars"]), (
-        "a missing plan has to fail where the mistake was made, not four tasks later"
+    Checked as a refusal before the first role rather than as a `| mandatory` on the
+    variable, because there is more than one way to name it now and a default that filled
+    one in from the others would be the playbook guessing."""
+    play = loaded(path)[0]
+    declared = yaml.safe_dump(play["vars"])
+
+    assert "basewright_plan_file" in declared
+    assert "basewright_plan_id" in declared
+
+    first = play["pre_tasks"][0]
+    assert "ansible.builtin.assert" in first, (
+        f"{path.name} must refuse an unnamed plan where the mistake was made, not four tasks later"
     )
+    named = yaml.safe_dump(first["ansible.builtin.assert"]["that"])
+    assert "basewright_plan_file" in named and "basewright_plan_id" in named
 
 
 # ------------------------------------------------------------------------- the phases
