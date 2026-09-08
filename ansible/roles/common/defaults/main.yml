@@ -1,16 +1,28 @@
 ---
-# Where a generated secret is written. Semaphore's own store is the real target and it
-# arrives with the Semaphore templates in Phase B; until then there is one implementation,
-# and it is named rather than assumed so that the second one is a file beside `secret.yml`
-# rather than a change to everything that calls it.
-common_secret_stores: [file]
+# Where a generated secret is written. Two implementations, chosen by name: `file` keeps a
+# plaintext file with mode 0600 on the control node, and `vault` keeps an ansible-vault
+# file in the same place, encrypted under a password this run is given rather than one it
+# stores. §11 of the brief names both Semaphore's own store and `ansible-vault`; this is
+# the second of those, and ADR-0027 records why it is not the first.
+#
+# `file` stays the default because changing it would move where an existing installation
+# looks for passwords it already generated. A Semaphore installation is pointed at `vault`
+# by deploy/semaphore/00-environment.json, which is the file that exists to say what such
+# an installation needs.
+common_secret_stores: [file, vault]
 common_secret_store: file
 
-# The file store keeps secrets on the control node, under a directory only its owner can
-# read, at the location the plan names. The plan says where a secret lives and never what
-# it is (ADR-0007), and this is what "where" resolves to for this store.
+# Both stores keep secrets on the control node, under a directory only its owner can read,
+# at the location the plan names. The plan says where a secret lives and never what it is
+# (ADR-0007), and this is what "where" resolves to.
 common_secret_dir: "{{ lookup('env', 'HOME') }}/.basewright/secrets"
 common_secret_path: "{{ common_secret_dir }}/{{ common_secret.location }}"
+
+# The key the `vault` store encrypts under, injected at run time and never stored beside
+# what it protects -- which is the whole of what that store buys. Under Semaphore it is an
+# environment secret of type `env`; under anything else it is an exported variable. Empty
+# is refused rather than defaulted, because a default here would be a published key.
+common_secret_vault_password: "{{ lookup('env', 'BASEWRIGHT_VAULT_PASSWORD') }}"
 
 # `basewright_plan` is not declared here on purpose. It is the play's variable, read by
 # every role and owned by none of them, and a default for it would be a role quietly

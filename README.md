@@ -515,7 +515,7 @@ engine name appears in the core.
 
 | Engine        | OS families           | Versions   | Status                       |
 | ------------- | --------------------- | ---------- | ---------------------------- |
-| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 15, 16, 17 | the whole loop       |
+| PostgreSQL    | Debian 12, Ubuntu 22.04 / 24.04 | 16, 17; 15 warns, and not on 24.04 | the whole loop |
 | PostgreSQL    | RHEL / Rocky          | —          | planned                      |
 | MySQL/MariaDB | Debian / Ubuntu       | —          | planned                      |
 | SQL Server    | Windows               | —          | planned                      |
@@ -527,10 +527,13 @@ the plan promised. That role is the one directory in this repository where the w
 allowed to appear. Nothing under `basewright/` knows it, and a test reads every line of the
 core to keep that true.
 
-The values that had to be assumed rather than confirmed — path conventions, the service
-account, the locale, the authentication rules, the minimums that become blocks — are listed
-one by one in [docs/dev/STATUS.md](docs/dev/STATUS.md), because a threshold nobody has
-agreed to is an assumption and should read like one.
+The seven conventions a profile cannot avoid deciding — path layout, the service account,
+the locale, the authentication rules, the minimums that become blocks, the OS families and
+the port — are this repository's decisions rather than placeholders waiting for somebody
+([ADR-0026](docs/adr/0026-the-profiles-defaults-are-decisions.md)).
+[docs/dev/STATUS.md](docs/dev/STATUS.md) states each one with the argument for it and the
+single line that changes it, because a value described as provisional is a value no
+reviewer argues with.
 
 An engine nothing has a profile for is not a missing feature, it is a missing directory,
 and the refusal says so:
@@ -592,7 +595,7 @@ basewright/
 │   └── inventory/example/
 ├── profiles/                    # engine data — the extension point
 ├── schema/                      # JSON Schema for every profile file and for plan.json
-├── deploy/semaphore/            # four template definitions + setup guide
+├── deploy/semaphore/            # one environment, four templates, setup guide
 ├── test/
 │   ├── unit/                    # pytest: facts, gates, sizing, rendering
 │   ├── golden/                  # fixture facts → expected plan output
@@ -629,10 +632,13 @@ make molecule      # run the role tests against real containers (slow, needs Doc
 make all           # everything CI runs on a pull request, except molecule
 ```
 
-`make molecule` builds a container per platform, brings systemd up inside it and runs the
-collecting role against it for real. That is slower than the rest of the suite put together
-and it is the only thing here that proves the collector and a machine still agree, so it
-runs on every pull request rather than on a schedule.
+`make molecule` runs three scenarios. Two of them build a container per platform and bring
+systemd up inside it: one runs the collecting role against it for real, the other takes a
+bare container all the way to a verified instance and back over it a second time. The third
+is small and needs no init — it puts a secret through every store the shared role can write
+to, twice each, and insists on getting the same answer. Together they are slower than the
+rest of the suite put together, and they are the only things here that prove this code and a
+machine still agree, so they run on every pull request rather than on a schedule.
 
 One command is worth knowing on its own, because it is what a profile author runs:
 
@@ -656,7 +662,7 @@ else:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/decisions-dark.svg">
-  <img alt="The twenty-three decision records, grouped by the question each one answers"
+  <img alt="The twenty-seven decision records, grouped by the question each one answers"
        src="docs/assets/decisions-light.svg" width="980">
 </picture>
 
@@ -673,8 +679,10 @@ else:
 The rest cover how a version is chosen
 ([0003](docs/adr/0003-humans-choose-the-version.md)), why the interface is Semaphore
 ([0005](docs/adr/0005-semaphore-is-the-interface.md)), how targets are reached
-([0006](docs/adr/0006-dedicated-technical-account.md)) and how credentials are kept out of
-every artifact ([0007](docs/adr/0007-secrets-never-in-artifacts.md)), why every sizing rule
+([0006](docs/adr/0006-dedicated-technical-account.md)), how credentials are kept out of
+every artifact ([0007](docs/adr/0007-secrets-never-in-artifacts.md)) and where a generated
+one goes instead ([0027](docs/adr/0027-the-second-secret-store-is-ansible-vault.md)), why
+every sizing rule
 carries its own justification ([0009](docs/adr/0009-sizing-rules-explain-themselves.md)),
 what a second run is allowed to do ([0010](docs/adr/0010-idempotency-match-or-refuse.md)),
 where packages come from ([0011](docs/adr/0011-native-packages-from-vendors.md)), and the two
@@ -709,6 +717,18 @@ been shown to be looking.
 **Provisioning a database is a form somebody fills in**, not a command somebody remembers:
 four Semaphore templates, plans kept in a store and found again by the id printed in a task
 log, and [a runbook](docs/dev/runbook.md) for when one of them goes red.
+
+**A generated password is written once, to a store, and never to the plan.** There are two
+stores and the plan names neither: it carries the location a secret lives at and nothing
+else, which is what makes it safe to attach to a change request. `file` writes the password
+itself with mode 0600 on the control node and is the default; `vault` writes an
+`ansible-vault` file in the same place under a key that reaches the run from Semaphore's own
+secret store, and refuses to run if it was given no key. Semaphore's store was the obvious
+choice for the second one and it is not what shipped, because its API returns no secret
+values — so it could not hand back a password on the second apply of a plan, and would have
+had to roll a new one ([ADR-0027](docs/adr/0027-the-second-secret-store-is-ansible-vault.md)).
+Getting a password back is `ansible-vault view`; that is the cost of the choice and
+[docs/dev/STATUS.md](docs/dev/STATUS.md) says so under known gaps.
 
 Seven conventions had to be settled before a profile could describe a real engine — path
 layout, service account, locale, authentication rules, the minimum resources a production

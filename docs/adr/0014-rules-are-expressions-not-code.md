@@ -66,7 +66,7 @@ attribute beginning with an underscore.
 
 **Names resolve through nested mappings of plain values, never through `getattr`.** The
 scope an expression is evaluated against is built in
-[`basewright/preflight/scope.py`](../../basewright/preflight/scope.py) out of strings,
+[`basewright/scope.py`](../../basewright/scope.py) out of strings,
 numbers, booleans and tuples. No object of ours ever enters an expression, so the standard
 walk from an attribute to a type to the interpreter has nothing to start from. This is what
 makes the safety structural rather than a matter of maintaining a blocklist.

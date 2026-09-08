@@ -55,6 +55,10 @@ LOOKS_OUTSIDE: str = "basewright_template"
 #: cannot carry the role's prefix without the playbook learning an engine's name.
 HANDS_BACK: str = "basewright_observed"
 
+#: The secret sink's implementations, one file each. Found by pattern rather than listed,
+#: so that a third one is covered by the guards below the moment it lands.
+SECRET_TASKS: tuple[Path, ...] = tuple(sorted((ROLES / "common" / "tasks").glob("secret_*.yml")))
+
 
 def task_files() -> list[Path]:
     found: list[Path] = []
@@ -66,6 +70,19 @@ def task_files() -> list[Path]:
 def tasks_in(path: Path) -> list[dict[str, Any]]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     return loaded if isinstance(loaded, list) else []
+
+
+def common_defaults() -> dict[str, Any]:
+    """The shared role's defaults, which is where the secret sink is chosen."""
+    loaded = yaml.safe_load((ROLES / "common" / "defaults" / "main.yml").read_text("utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+#: How the shared role names a secret store. Like the engine above it is a template rather
+#: than a name, and for the same reason: the installation says which store, and the file
+#: that dispatches must not have learned one.
+FROM_THE_INSTALLATION = "{{ common_secret_store }}"
 
 
 #: How the playbook names the engine's role. It is a template rather than a name, which is
@@ -198,14 +215,30 @@ def test_the_shared_phases_fall_between_the_engine_phases(
     assert entered.count("common") >= 2, "the shared phases are not one block"
 
 
+def resolved(stem: str) -> set[str]:
+    """One include, as the files it can actually reach.
+
+    An include whose filename is a template reaches one file per value the template can
+    take, and the values are declared rather than guessed: the secret sink dispatches over
+    `common_secret_stores`, so that list is what says which files are alive. A guard that
+    took the template literally would call every implementation dead and every
+    implementation would then be free to rot.
+    """
+    if FROM_THE_INSTALLATION not in stem:
+        return {stem}
+    stores = common_defaults()["common_secret_stores"]
+    return {stem.replace(FROM_THE_INSTALLATION, store) for store in stores}
+
+
 def test_every_phase_the_engine_role_has_is_one_a_playbook_runs() -> None:
     """Except the ones another phase includes. A task file nothing reaches is dead."""
     named = {phase for path in PLAYBOOKS for _, phase in phases_of(loaded(path))}
     included = {
-        Path(str(task["ansible.builtin.include_tasks"])).stem
+        stem
         for path in task_files()
         for task in tasks_in(path)
         if "ansible.builtin.include_tasks" in task
+        for stem in resolved(Path(str(task["ansible.builtin.include_tasks"])).stem)
     }
     included |= {
         task["ansible.builtin.include_role"].get("tasks_from", "main")
@@ -249,12 +282,62 @@ def test_no_secret_ever_reaches_a_command_line() -> None:
 
 
 def test_the_store_is_a_seam_rather_than_a_detail() -> None:
-    """Semaphore's store is the real target and a container needs one anyway, so the sink
-    is named. A second implementation is a file beside the first, not an edit to everything
-    that calls it."""
-    defaults = yaml.safe_load((ROLES / "common" / "defaults" / "main.yml").read_text("utf-8"))
+    """A sink named in a variable is not an extension point; a sink that dispatches is.
 
-    assert defaults["common_secret_store"] in defaults["common_secret_stores"]
+    This asserted only that the default was a declared store, which was true of an
+    arrangement whose tasks were written inline and where a second implementation would
+    have meant editing the file every caller goes through. What makes the claim real is the
+    three-way agreement checked here: the declared stores, the files that implement them,
+    and a dispatching include that names none of them.
+    """
+    stores = set(common_defaults()["common_secret_stores"])
+    implementations = {path.stem.removeprefix("secret_") for path in SECRET_TASKS}
+
+    assert common_defaults()["common_secret_store"] in stores
+    assert len(stores) > 1, "a seam with one implementation is a seam nobody has crossed"
+    assert stores == implementations, (
+        f"declared {sorted(stores)} and implemented {sorted(implementations)}. A store named "
+        "with no file behind it fails halfway through an apply; a file no name reaches is dead."
+    )
+
+
+def test_the_file_every_caller_goes_through_implements_nothing() -> None:
+    """The dispatch itself. `secret.yml` is what an engine role includes, and it has to stay
+    the file that chooses rather than one of the choices -- otherwise the first store is
+    privileged over every later one and "a file beside this one" stops being true."""
+    dispatcher = tasks_in(ROLES / "common" / "tasks" / "secret.yml")
+    dispatching = [
+        task
+        for task in dispatcher
+        if FROM_THE_INSTALLATION in str(task.get("ansible.builtin.include_tasks", ""))
+    ]
+
+    assert len(dispatching) == 1, "secret.yml must reach an implementation by name, exactly once"
+
+    body = yaml.safe_dump(dispatcher)
+    for store in common_defaults()["common_secret_stores"]:
+        assert f"secret_{store}" not in body, (
+            f"secret.yml reaches secret_{store}.yml by its literal name. One store would then "
+            "be the one this file knows about and the rest would be the exceptions."
+        )
+    branching = [task for task in dispatcher if "common_secret_store" in str(task.get("when", ""))]
+    assert not branching, (
+        f"{[task.get('name') for task in branching]} branches on which store was chosen. "
+        "Choosing is this file's whole job; behaving differently afterwards is the "
+        "implementation's, and a `when` here is the first half of writing it in the wrong place."
+    )
+
+
+@pytest.mark.parametrize("path", SECRET_TASKS, ids=lambda path: path.name)
+def test_no_implementation_is_excused_the_rules_the_first_one_follows(path: Path) -> None:
+    """Both stores handle a generated password, so both are held to ADR-0007 rather than the
+    first one being the tested one. The two assertions above scan every task file and would
+    cover these by construction; this fails with the store's name in it, which is what
+    somebody adding a third one needs to read."""
+    for task in tasks_in(path):
+        if "secret_value" not in yaml.safe_dump(task):
+            continue
+        assert task.get("no_log") is True, f"{task.get('name')!r} in {path.name} is not silent"
 
 
 # ------------------------------------------------------- what the local linter keeps missing

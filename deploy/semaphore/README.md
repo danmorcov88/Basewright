@@ -41,6 +41,49 @@ plan id that was real an hour ago.
 install -d -m 0750 -o semaphore -g semaphore /opt/basewright/plans
 ```
 
+**A vault password**, because this environment selects the secret store that needs one.
+Generated passwords are written to the control node as `ansible-vault` files, encrypted
+under a key that lives in Semaphore's own store and is handed to the run rather than kept
+beside what it protects — which is what §11 asks for
+([ADR-0027](../../docs/adr/0027-the-second-secret-store-is-ansible-vault.md)). Make one,
+keep a copy somewhere an operator can reach it, and add it to the environment as a **secret
+of type `env`** named `BASEWRIGHT_VAULT_PASSWORD`:
+
+```
+openssl rand -base64 48
+```
+
+Add it in the web interface, or through the API on the environment the next section
+creates — it is not in `00-environment.json` and never will be, because a key committed
+beside the thing it protects is not a key:
+
+```
+ENVIRONMENT=1   # the id the call in the next section came back with
+
+curl -sS -X PUT "$SEMAPHORE/api/project/$PROJECT/environment/$ENVIRONMENT" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d @- <<JSON
+{ "id": $ENVIRONMENT, "project_id": $PROJECT, "name": "Basewright",
+  "json": "{}",
+  "secrets": [ { "type": "env", "name": "BASEWRIGHT_VAULT_PASSWORD",
+                 "secret": "the password you just generated",
+                 "operation": "create" } ] }
+JSON
+```
+
+**Apply refuses to run without it**, before it generates anything. That is deliberate: a
+generated password written without the key that was supposed to protect it is worse than
+one written in plaintext, because the file looks stored and the run goes green.
+
+**Retrieving a password** is the cost of this choice, and it is one command with the same
+key. `<location>` is what the plan's `secrets` section names — the plan says where a secret
+lives and never what it is, which is the whole arrangement
+([ADR-0007](../../docs/adr/0007-secrets-never-in-artifacts.md)):
+
+```
+ansible-vault view --vault-password-file ~/vault-password ~/.basewright/secrets/<location>
+```
+
 ## Loading the definitions
 
 The ids in these files are zeros, because a project id, an inventory id, a repository id and
@@ -109,11 +152,18 @@ a path is a decision reviewed in a pull request rather than typed into a form by
 happens to be provisioning that afternoon. An estate that wants different paths changes one
 file; an estate that wants them per host has a case to make, and it is not made here.
 
-**A secret store binding.** Generated passwords are written through a sink chosen by a role
-variable, and the implementation that ships is a file with mode 0600 on the control node.
-Pointing that at Semaphore's own secret store is a variable and a small role, and it is not
-written yet — so on a Semaphore installation the passwords land on the Semaphore host, which
-is somewhere to know about rather than somewhere to leave them.
+**A password you can read in the web interface.** Semaphore's own secret store would have
+given you that, and it is not what these templates use. Its API is write-only by design —
+the environment it returns carries a secret's name and type and never its value — so a
+store built on it could not hand back the password it generated, and a second apply of the
+same plan would have to roll a new one and lock out whoever was given the first
+([ADR-0027](../../docs/adr/0027-the-second-secret-store-is-ansible-vault.md)).
+
+What this environment selects instead is the `vault` store: the file stays on the control
+node and stops being readable by anyone who has not been given the key, and the key is the
+thing Semaphore holds. That is smaller than "the passwords are in Semaphore" and larger
+than nothing, and the difference is worth knowing before you rely on it. Getting a password
+back is `ansible-vault view`, shown above.
 
 **Scheduling, RBAC and history.** Semaphore's, all three, which is the reason it is the
 interface. Basewright does not reimplement any of them and would be worse at all of them.

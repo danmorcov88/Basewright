@@ -1,6 +1,6 @@
 {
   "name": "Basewright",
-  "description": "The values every Basewright template needs and no survey field should ask for. Attach this environment to all four templates.",
+  "description": "The values every Basewright template needs and no survey field should ask for. Attach this environment to all four templates. It also needs one secret, BASEWRIGHT_VAULT_PASSWORD, of type env -- deliberately not in this file, because a key committed beside the thing it protects is not a key.",
   "project_id": 0,
-  "json": "{\"basewright_plan_store\": \"/opt/basewright/plans\"}"
+  "json": "{\"basewright_plan_store\": \"/opt/basewright/plans\", \"common_secret_store\": \"vault\"}"
 }

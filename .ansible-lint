@@ -5,6 +5,10 @@
 # are ordinary YAML rather than left to guess and be wrong about every profile in the
 # repository.
 kinds:
+  # A molecule scenario is a directory of playbooks, so a file of tasks one of them
+  # includes has to be named as such or the linter reads `- name:` at the top of it as a
+  # play and reports every task in the file as an invalid play attribute.
+  - tasks: "test/molecule/*/tasks/*.yml"
   - yaml: "profiles/**/*.yml"
   - yaml: "test/fixtures/profiles/**/*.yml"
 

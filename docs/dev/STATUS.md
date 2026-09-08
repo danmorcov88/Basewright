@@ -3,7 +3,7 @@
 What is actually merged, what was decided, and what is still missing. Kept accurate on
 purpose: an overstated status section is the fastest way to lose a technical reader.
 
-Last reviewed: 2026-09-04.
+Last reviewed: 2026-09-08.
 
 ## Phases
 
@@ -19,7 +19,7 @@ Last reviewed: 2026-09-04.
 **Phase B as the brief writes it also contains RHEL and Rocky, and this repository does not
 ship them.** The row above says what was built rather than what was listed, and the
 difference is deliberate: `profiles/postgresql/` declares the Debian family because that is
-the family two molecule scenarios provision on every pull request, and declaring another
+the family the molecule scenarios provision on every pull request, and declaring another
 before it is tested would be a claim rather than a fact. Adding it is a
 `support-matrix.yml` entry, a `packages.yml` entry and a scenario -- no core change, which
 is the point of engines being data (ADR-0002). Until somebody runs that scenario green, the
@@ -32,7 +32,7 @@ support matrix says Debian and means it.
 | Repository skeleton, license, commit template     | done        |
 | Engine-name guard over the core                   | done        |
 | Generated diagrams and terminal captures, checked in CI | done   |
-| Architecture decision records 0001–0026           | done        |
+| Architecture decision records 0001–0027           | done        |
 | Profile JSON Schema, and the plan contract        | done        |
 | Profile loader with schema validation             | done        |
 | Facts contract, typed model and normalization     | done        |
@@ -60,6 +60,7 @@ support matrix says Debian and means it.
 | A playbook per verb, which is what Semaphore runs | done        |
 | The plan store, and finding a plan by its id      | done        |
 | Semaphore template definitions and a setup guide  | done        |
+| A second secret store, and the scenario that proves it | done    |
 | `docs/dev/runbook.md`                             | done        |
 
 ## The loop closes
@@ -206,14 +207,23 @@ What is worth knowing about the rest:
   statement that sets it goes in over stdin, dollar-quoted so there is nothing to escape,
   and a test asserts that every task touching the value is `no_log` and that none of them
   puts it in argv.
-- **The secret store is a seam, and the second implementation did not arrive.** Semaphore's
-  own store is the real target. The templates shipped and this did not, so on a Semaphore
-  installation the generated passwords land on the Semaphore host rather than in its secret
-  store -- named again under known gaps, because it is the largest single thing left
-  undone. So the sink is chosen by a
-  variable, there is one implementation -- a file on the control node, mode 0600, at the
-  location the plan names -- and the second is a file beside the first rather than an edit
-  to everything that calls it.
+- **The secret store dispatches, and there are two of them.** `secret.yml` is what an
+  engine role includes and it implements nothing: it chooses, and `secret_file.yml` and
+  `secret_vault.yml` sit beside it. Both keep the same two-part promise -- the value the
+  store holds, and whether this run is what generated it -- so no engine role learns which
+  one answered, and a third is a file and a name in `common_secret_stores`.
+
+  `file` writes the password itself, mode 0600, at the location the plan names. `vault`
+  writes an `$ANSIBLE_VAULT` file in the same place, encrypted under a key taken from the
+  run's environment and never written down beside it, and refuses to run at all if it was
+  given no key. `file` is the role's default; `deploy/semaphore/00-environment.json`
+  selects `vault`, which is where §11's "injected at run time" actually lands
+  ([ADR-0027](../adr/0027-the-second-secret-store-is-ansible-vault.md)).
+
+  Both are proved on a container by `test/molecule/secrets`, which asks each store for the
+  same secret twice and insists it hands back what it was holding. A store that rolled a
+  new password on the second apply would lock out whoever was given the first, and nothing
+  would say so until somebody tried to connect.
 - **The packaging is told not to make a cluster nobody planned.** Installing the Debian
   server package creates a cluster of its own, with the locale, encoding and data directory
   the packaging chose. Since apply is never destructive there would be no putting that right
@@ -267,9 +277,9 @@ the service fails to bind.
 
 This page used to say that everything else in CI ran offline. It does not, and the
 correction is worth making rather than quietly softening: **every job needs the network.**
-All eleven install from PyPI, and both molecule scenarios build their target images, which
-means pulling from Docker Hub and installing systemd, python3 and a handful of tools from
-the distribution's own archives. A page claiming otherwise was describing an intention.
+All eleven install from PyPI, and all three molecule scenarios pull an image from Docker
+Hub -- two of them build on it, installing systemd, python3 and a handful of tools from the
+distribution's own archives. A page claiming otherwise was describing an intention.
 
 What is true, and what the sentence was reaching for, is narrower. **The apply scenario is
 the only job whose subject under test reaches a third party** -- it adds the vendor's
@@ -378,8 +388,10 @@ what the profile's titles claim rather than gaps left unsaid.
 - **The connection it proves is over the local socket, as the service account.** That is
   authentication -- by the operating system rather than by a password -- and it proves the
   instance is serving. It is not a password-authenticated connection over TCP, and proving
-  that means verify reading the secret store, and the binding to Semaphore's own is the one
-  thing the templates shipped without.
+  that means verify reading the secret store back -- which both stores could now answer, and
+  which is still not something verify does. It stays out because a verification step that
+  handles a password to prove a password works has widened the set of places one can leak
+  from, to check something apply already did.
 - **The port kind judges the port and not the address**, because the plan carries no listen
   address to compare one against. The address is asked by the profile, as an expression, and
   a profile that did not ask would not have it checked. Putting a planned listen address in
@@ -454,10 +466,14 @@ one who gets it wrong. The playbook resolves `hosts:` out of the plan, and
   in a pull request rather than typed into a form by whoever is provisioning that afternoon.
   An estate that wants different paths changes one file. This is a deviation from §12 and it
   is written down here rather than left to be discovered.
-- **A binding to Semaphore's own secret store.** The sink is a role variable and the
-  implementation that ships is a file with mode 0600 on the control node, so on a Semaphore
-  installation the generated passwords land on the Semaphore host. That is somewhere to know
-  about rather than somewhere to leave them, and closing it is a variable and a small role.
+- **A password an operator can read in Semaphore's web interface.** Its own secret store
+  would have given that, and its API is write-only by design -- the environment it returns
+  carries a secret's name and type and never its value -- so a store built on it could not
+  hand back what it holds, and a second apply of the same plan would have to roll a new
+  password ([ADR-0027](../adr/0027-the-second-secret-store-is-ansible-vault.md)). What the
+  environment selects instead is the `vault` store, which puts the key in Semaphore and
+  leaves what it protects on the control node. Retrieving a password is `ansible-vault
+  view`, and that is the cost of the choice rather than an oversight.
 
 ## Exit codes
 
@@ -482,9 +498,11 @@ for the code to be needed again.
 
 ## What CI proves, and what it does not picture
 
-Both molecule scenarios run on every pull request. The second takes a bare container from
-nothing to a running instance, over it again with nothing to do, verifies it, changes it,
-and verifies it again expecting a refusal.
+All three molecule scenarios run on every pull request. The largest of them takes a bare
+container from nothing to a running instance, over it again with nothing to do, verifies it,
+changes it, and verifies it again expecting a refusal. The smallest asks each secret store
+for the same secret twice and insists on getting the same answer, which is the one promise a
+store makes that a passing apply would not notice being broken.
 
 The one thing that is proved rather than pictured is `apply` itself. A run prints package
 versions and moments, and neither survives a byte-for-byte image check, so there is no
@@ -575,11 +593,21 @@ These are the ones worth knowing about before relying on this. None of them is a
 and none of them is being worked around; each is either a decision with a record or a thing
 somebody would have to build.
 
-- **Generated passwords land on the control node.** The secret sink is a role variable and
-  the one implementation that ships writes a file with mode 0600 beside the run. Under
-  Semaphore that means the Semaphore host, not Semaphore's own secret store, which is where
-  they belong. Closing it is a variable and a small role, and it is the largest single thing
-  left undone.
+- **Generated passwords still live on the control node -- encrypted, if you choose that.**
+  This was the largest thing left undone and it is now half done, which is worth stating
+  precisely rather than crossing off. There are two stores: `file` writes the password
+  itself, and `vault` writes an `$ANSIBLE_VAULT` file under a key that lives in Semaphore
+  and reaches the run through the environment. A Semaphore installation gets `vault` from
+  `deploy/semaphore/00-environment.json`; a bare control node gets `file` unless it says
+  otherwise.
+
+  What remains: the password is not *in* Semaphore's store, and cannot be, because that
+  store's API returns no secret values and a store that cannot be read cannot hand back
+  what it holds ([ADR-0027](../adr/0027-the-second-secret-store-is-ansible-vault.md)).
+  Retrieving one is `ansible-vault view` rather than a web interface. And there is one
+  vault password per installation -- no rotation, no per-instance key, no distribution.
+  That last is somebody's key management, and this project does not have an opinion about
+  whose.
 - **RHEL and Rocky are not supported**, and the support matrix says so rather than implying
   otherwise. The profile declares the family CI provisions on every pull request.
 - **The store keeps no history.** One plan per id and one pointer per instance, overwritten.
@@ -634,9 +662,9 @@ somebody would have to build.
   Two smaller answers travel with it, and are open until apply exists to hold them: a
   configuration template is resolved by the filename the plan gives, under the profile the
   plan names, because rendering is not deciding when every value poured in comes from the
-  plan; and a generated secret is written through one sink whose implementation is a role
-  variable, so the path a password takes is identical under Semaphore and under a
-  container.
+  plan; and a generated secret is written through one sink, so the code a password travels
+  through is identical under Semaphore and under a container even though the store at the
+  end of it is not the same one.
 - **The plan contract is frozen, and moving it is what a version is for.** `plan` produces
   artifacts, fourteen of them are committed under `test/golden/`, nested by engine, and
   every change to `plan.json` is a version of the contract rather than a patch -- which is

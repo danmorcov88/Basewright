@@ -144,11 +144,25 @@ the plan id directly to get past it, and check which store Apply is writing to.
 | Plans | `<store>/plans/<plan_id>.json` |
 | Which plan an instance runs | `<store>/instances/<host>/<instance>` |
 | Observations verify judged | `observations/<host>.json` on the control node |
-| Generated passwords | the secret sink — a file with mode 0600 on the control node |
+| Generated passwords | `~/.basewright/secrets/<location>` on the control node, mode 0600 |
 
 The store's location is `basewright_plan_store`, set for all four templates in the Semaphore
 environment. Under Semaphore it must be a volume: a path inside a container that gets
 replaced loses every plan, and an id that was real an hour ago stops resolving.
+
+`<location>` is what the plan's `secrets` section names. Which store wrote it is
+`common_secret_store`: `file` holds the password itself, and `vault` — what the Semaphore
+environment selects — holds an `ansible-vault` file, so reading one back takes the key:
+
+```
+ansible-vault view --vault-password-file ~/vault-password ~/.basewright/secrets/<location>
+```
+
+**"common_secret_store is vault and no vault password was given."** Apply refused before
+generating anything, because `BASEWRIGHT_VAULT_PASSWORD` was not in the run's environment.
+Under Semaphore it is a secret of type `env` on the Basewright environment; check the
+template has that environment attached. Apply refuses rather than falling back, because a
+password written without the key that was meant to protect it looks stored and is not.
 
 ## Running it without Semaphore
 

@@ -11,7 +11,7 @@ on the merits, and supersede when the merits change.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/decisions-dark.svg">
-  <img alt="The twenty-three decision records, grouped by the question each one answers"
+  <img alt="The twenty-seven decision records, grouped by the question each one answers"
        src="../assets/decisions-light.svg" width="980">
 </picture>
 
@@ -45,6 +45,7 @@ on the merits, and supersede when the merits change.
 | [0024](0024-the-role-observes-and-the-core-judges.md)           | An engine's role observes the instance; the core judges what it read |
 | [0025](0025-a-check-nobody-could-run-is-not-a-pass.md)          | A check nobody could run is not a pass, and it refuses the run       |
 | [0026](0026-the-profiles-defaults-are-decisions.md)             | The profile's seven values are decisions, not placeholders           |
+| [0027](0027-the-second-secret-store-is-ansible-vault.md)        | The second secret store is ansible-vault, and not Semaphore's own    |
 
 ## Reading order
 
